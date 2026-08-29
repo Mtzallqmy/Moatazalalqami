@@ -33,4 +33,4 @@ jobs:
             exit 0
           fi
           git commit -m 'feat: apply Moataz Alaqami product modernization [skip ci]'
-          git push origin HEAD:main
+          git push origin "HEAD:${GITHUB_REF_NAME}"

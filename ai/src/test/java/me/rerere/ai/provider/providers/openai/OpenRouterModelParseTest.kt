@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ModelCapability
 import me.rerere.ai.provider.ModelType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -35,8 +36,32 @@ class OpenRouterModelParseTest {
         assertTrue(Modality.IMAGE in m.inputModalities)
         assertTrue(ModelAbility.TOOL in m.abilities)
         assertTrue(ModelAbility.REASONING in m.abilities)
+        assertTrue(ModelCapability.IMAGE_GENERATION in m.capabilities)
+        assertTrue(ModelCapability.TOOL_CALLING in m.capabilities)
+        assertTrue(ModelCapability.REASONING in m.capabilities)
         assertEquals(1048576, m.contextLength)
         assertEquals(0.0000003, m.pricePromptPerToken!!, 1e-12)
+    }
+
+    @Test
+    fun parses_extended_audio_video_document_and_server_tool_capabilities() {
+        val json = """
+            {"id":"x/omni-agent","name":"Omni Agent",
+             "architecture":{
+               "input_modalities":["text","image","audio","video","document"],
+               "output_modalities":["text","audio"]},
+             "supported_parameters":["tools","reasoning","web_search","url_context","file_search","code_interpreter"]}
+        """.trimIndent()
+        val m = openRouterModelFromJson(Json.parseToJsonElement(json).jsonObject)!!
+        assertEquals(ModelType.CHAT, m.type)
+        assertTrue(ModelCapability.AUDIO_INPUT in m.capabilities)
+        assertTrue(ModelCapability.AUDIO_OUTPUT in m.capabilities)
+        assertTrue(ModelCapability.VIDEO_INPUT in m.capabilities)
+        assertTrue(ModelCapability.DOCUMENT_INPUT in m.capabilities)
+        assertTrue(ModelCapability.WEB_SEARCH in m.capabilities)
+        assertTrue(ModelCapability.URL_CONTEXT in m.capabilities)
+        assertTrue(ModelCapability.FILE_SEARCH in m.capabilities)
+        assertTrue(ModelCapability.CODE_EXECUTION in m.capabilities)
     }
 
     @Test
@@ -49,6 +74,7 @@ class OpenRouterModelParseTest {
         val m = openRouterModelFromJson(Json.parseToJsonElement(json).jsonObject)!!
         assertEquals(ModelType.IMAGE, m.type)
         assertTrue(Modality.IMAGE in m.outputModalities)
+        assertTrue(ModelCapability.IMAGE_GENERATION in m.capabilities)
     }
 
     @Test
@@ -62,5 +88,6 @@ class OpenRouterModelParseTest {
         assertEquals(ModelType.CHAT, m.type)
         assertTrue(Modality.IMAGE !in m.outputModalities)
         assertTrue(ModelAbility.TOOL !in m.abilities)
+        assertTrue(m.capabilities.isEmpty())
     }
 }

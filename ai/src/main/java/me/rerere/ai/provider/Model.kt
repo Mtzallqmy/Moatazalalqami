@@ -2,6 +2,7 @@ package me.rerere.ai.provider
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import me.rerere.ai.registry.ModelRegistry
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -12,9 +13,14 @@ data class Model(
     val type: ModelType = ModelType.CHAT,
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBodies: List<CustomBody> = emptyList(),
-    val inputModalities: List<Modality> = listOf(Modality.TEXT),
-    val outputModalities: List<Modality> = listOf(Modality.TEXT),
-    val abilities: List<ModelAbility> = emptyList(),
+    /**
+     * Provider metadata wins when supplied explicitly. Providers that return only an id/name
+     * automatically inherit the project's known model registry so Gemini/Claude/GPT/etc. do not
+     * silently degrade to text-only when their endpoint omits capability metadata.
+     */
+    val inputModalities: List<Modality> = ModelRegistry.MODEL_INPUT_MODALITIES.getData(modelId),
+    val outputModalities: List<Modality> = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(modelId),
+    val abilities: List<ModelAbility> = ModelRegistry.MODEL_ABILITIES.getData(modelId),
     val tools: Set<BuiltInTools> = emptySet(),
     val providerOverwrite: ProviderSetting? = null,
     // Optional capability/pricing metadata, populated from provider model metadata.
@@ -27,7 +33,7 @@ data class Model(
 )
 
 /**
- * Capability checks intentionally accept both the legacy manually-configured fields and richer
+ * Capability checks intentionally accept both the legacy/manual registry fields and richer
  * provider metadata. This lets old saved models keep working while imported models can advertise
  * their actual features without requiring the user to toggle every ability by hand.
  */

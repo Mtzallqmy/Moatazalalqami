@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "app/src/main/java/me/rerere/rikkahub/ui/pages/extensions/workspace/WorkspaceDetailPage.kt"
+PREFERENCES = ROOT / "app/src/main/java/me/rerere/rikkahub/data/datastore/PreferencesStore.kt"
 
 
 def required_replace(text: str, old: str, new: str, label: str) -> str:
@@ -38,4 +39,28 @@ text = text.replace(
 )
 
 PAGE.write_text(text, encoding="utf-8")
+
+# Upgrade only assistants that still have the historical untouched one-tool default. This is
+# deliberately conservative: any assistant whose tool list differs from [TimeInfo] is considered
+# user-configured and is left exactly as-is.
+prefs = PREFERENCES.read_text(encoding="utf-8")
+prefs = required_replace(
+    prefs,
+    "import me.rerere.rikkahub.data.model.Assistant\n",
+    "import me.rerere.rikkahub.data.model.Assistant\nimport me.rerere.rikkahub.data.model.DEFAULT_AGENT_LOCAL_TOOLS\nimport me.rerere.rikkahub.data.ai.tools.LocalToolOption\n",
+    "agent default migration imports",
+)
+
+legacy_block = """            // One-shot upgrade for existing installs that pre-date the agent-core auto-load:\n            // if a default-IDed assistant has an empty enabledSkills, treat it as fresh and\n            // pin agent-core. Users who deliberately added other skills are untouched.\n            assistants = assistants.map { assistant ->\n                val isDefault = DEFAULT_ASSISTANTS.any { it.id == assistant.id }\n                if (isDefault && assistant.enabledSkills.isEmpty()) {\n                    assistant.copy(enabledSkills = setOf(\"agent-core\"))\n                } else assistant\n            }.toMutableList()\n"""
+
+agent_block = legacy_block + """            // Upgrade the old untouched TimeInfo-only assistant default to the AL Agent tool\n            // profile. Any non-default tool selection is treated as an explicit user choice and\n            // preserved, so upgrades never re-enable tools a user intentionally disabled.\n            assistants = assistants.map { assistant ->\n                if (assistant.localTools == listOf(LocalToolOption.TimeInfo)) {\n                    assistant.copy(localTools = DEFAULT_AGENT_LOCAL_TOOLS)\n                } else assistant\n            }.toMutableList()\n"""
+
+prefs = required_replace(
+    prefs,
+    legacy_block,
+    agent_block,
+    "legacy assistant agent-tool migration",
+)
+
+PREFERENCES.write_text(prefs, encoding="utf-8")
 print("Moataz Alaqami product updates applied")

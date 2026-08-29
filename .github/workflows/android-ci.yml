@@ -64,6 +64,20 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: ./gradlew :app:assembleDebug --stacktrace
 
+      - name: Verify arm64 APK
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          echo "APK=$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
+          if unzip -l "$APK" | grep -Eq 'lib/(x86|x86_64|armeabi-v7a)/'; then
+            echo 'Unexpected non-arm64 native libraries found in APK' >&2
+            exit 1
+          fi
+
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4

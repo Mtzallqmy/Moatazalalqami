@@ -136,8 +136,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
 
     @Suppress("DEPRECATION")  // LocalWindowInfo replaces this in a future Compose bump
     val windowAdaptiveInfo = currentWindowDpSize()
-    val isBigScreen =
-        windowAdaptiveInfo.width > windowAdaptiveInfo.height && windowAdaptiveInfo.width >= 1100.dp
+    val isBigScreen = windowAdaptiveInfo.width >= 840.dp
 
     // 进入大屏（永久抽屉）模式时重置抽屉状态为关闭，
     // 避免从横屏旋转回竖屏后，模态抽屉残留为打开状态且无法关闭（#1304）

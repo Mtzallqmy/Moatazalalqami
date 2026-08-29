@@ -30,13 +30,25 @@ class OpenRouterModelParseTest {
         val m = openRouterModelFromJson(obj)!!
         assertEquals("google/gemini-2.5-flash-image", m.modelId)
         assertEquals("Gemini 2.5 Flash Image", m.displayName)
-        assertEquals(ModelType.IMAGE, m.type)
+        assertEquals(ModelType.CHAT, m.type)
         assertTrue(Modality.IMAGE in m.outputModalities)
         assertTrue(Modality.IMAGE in m.inputModalities)
         assertTrue(ModelAbility.TOOL in m.abilities)
         assertTrue(ModelAbility.REASONING in m.abilities)
         assertEquals(1048576, m.contextLength)
         assertEquals(0.0000003, m.pricePromptPerToken!!, 1e-12)
+    }
+
+    @Test
+    fun image_only_model_stays_in_image_picker() {
+        val json = """
+            {"id":"x/image-only","name":"Image Only",
+             "architecture":{"input_modalities":["text"],"output_modalities":["image"]},
+             "supported_parameters":[]}
+        """.trimIndent()
+        val m = openRouterModelFromJson(Json.parseToJsonElement(json).jsonObject)!!
+        assertEquals(ModelType.IMAGE, m.type)
+        assertTrue(Modality.IMAGE in m.outputModalities)
     }
 
     @Test

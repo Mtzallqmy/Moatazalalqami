@@ -28,6 +28,7 @@ class WorkspaceReminderTransformerTest {
         assertTrue(prompt.contains("workspace_shell"))
         assertTrue(prompt.contains("embedded with the app"))
         assertTrue(prompt.contains("Never ask the user to download a rootfs URL"))
+        assertFalse(prompt.contains("ubuntu-base"))
     }
 
     @Test
@@ -55,7 +56,9 @@ class WorkspaceReminderTransformerTest {
         requireNotNull(prompt)
         assertTrue(prompt.contains("<workspace-setup>"))
         assertTrue(prompt.contains("Repair embedded Linux"))
-        assertFalse(prompt.contains("paste a rootfs URL"))
+        assertTrue(prompt.contains("Never instruct the user to paste a rootfs URL"))
+        assertFalse(prompt.contains("http://"))
+        assertFalse(prompt.contains("https://"))
     }
 
     @Test
@@ -66,6 +69,7 @@ class WorkspaceReminderTransformerTest {
         assertFalse(prompt.contains("<workspace>"))
         assertTrue(prompt.contains("+ button"))
         assertTrue(prompt.contains("rootfs is bundled with the app"))
+        assertTrue(prompt.contains("no URL or separate download is needed"))
     }
 
     @Test

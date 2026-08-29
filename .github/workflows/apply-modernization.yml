@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'scripts/apply-modernization.py'
+      - 'scripts/apply-product-updates.py'
       - '.github/workflows/apply-modernization.yml'
 
 permissions:
@@ -19,7 +20,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply source patches
-        run: python3 scripts/apply-modernization.py
+        run: |
+          python3 scripts/apply-modernization.py
+          python3 scripts/apply-product-updates.py
 
       - name: Commit patched source
         shell: bash

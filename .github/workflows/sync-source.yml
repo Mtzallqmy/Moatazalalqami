@@ -25,11 +25,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Import complete upstream source and submodules
+      - name: Import complete upstream application source
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/ExTV/rikkahub-agent.git /tmp/rikkahub-agent
+          git clone --depth 1 https://github.com/ExTV/rikkahub-agent.git /tmp/rikkahub-agent
           rsync -a \
             --exclude='.git' \
             --exclude='.github/workflows/' \

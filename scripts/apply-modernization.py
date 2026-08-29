@@ -69,4 +69,69 @@ if text2 != text:
     settings.write_text(text2, encoding="utf-8")
     print("updated settings.gradle.kts branding")
 
+# Visible Android strings: preserve resource identifiers for binary/source compatibility,
+# but remove upstream product branding from human-facing translated text.
+for strings_file in (ROOT / "app/src/main/res").glob("values*/strings.xml"):
+    original = strings_file.read_text(encoding="utf-8")
+
+    def clean_string(match: re.Match[str]) -> str:
+        prefix, body, suffix = match.groups()
+        body = re.sub(r'RikkaHub|Rikka Hub|rikkahub', 'Moataz Alaqami', body)
+        return prefix + body + suffix
+
+    updated = re.sub(r'(<string\s+name="[^"]+"[^>]*>)(.*?)(</string>)', clean_string, original)
+    if updated != original:
+        strings_file.write_text(updated, encoding="utf-8")
+        print(f"updated visible branding in {strings_file.relative_to(ROOT)}")
+
+# Web client branding. Internal storage/event keys intentionally stay stable so upgrades retain sessions/settings.
+for rel in ["web-ui/app/locales/en-US/page.json", "web-ui/app/locales/zh-CN/page.json"]:
+    p = ROOT / rel
+    if p.exists():
+        original = p.read_text(encoding="utf-8")
+        updated = original.replace("RikkaHub Web", "Moataz Alaqami Web").replace("RikkaHub web client", "Moataz Alaqami web client").replace("RikkaHub 网页客户端", "Moataz Alaqami 网页客户端")
+        if updated != original:
+            p.write_text(updated, encoding="utf-8")
+            print(f"updated {rel}")
+
+# Reliability/update surfaces must point at this product repository, not upstream release feeds.
+for rel in [
+    "app/src/main/java/me/rerere/rikkahub/reliability/GitHubReleaseChecker.kt",
+    "app/src/main/java/me/rerere/rikkahub/reliability/ReliabilityTools.kt",
+    "app/src/main/java/me/rerere/rikkahub/reliability/BugReportBuilder.kt",
+    "app/src/main/java/me/rerere/rikkahub/skills/SkillUrlImporter.kt",
+]:
+    p = ROOT / rel
+    if not p.exists():
+        continue
+    original = p.read_text(encoding="utf-8")
+    updated = original
+    updated = updated.replace("https://api.github.com/repos/ExTV/rikkahub-agent/releases/latest", "https://api.github.com/repos/Mtzallqmy/Moatazalalqami/releases/latest")
+    updated = updated.replace("ExTV/rikkahub-agent", "Mtzallqmy/Moatazalalqami")
+    updated = updated.replace("rikkahub-agent/skill-importer", "moataz-alaqami/skill-importer")
+    updated = updated.replace("rikkahub-agent/${BuildConfig.VERSION_NAME}", "moataz-alaqami/${BuildConfig.VERSION_NAME}")
+    updated = updated.replace("rikkahub-agent-bug-", "moataz-alaqami-bug-")
+    updated = updated.replace("App: rikkahub-agent", "App: Moataz Alaqami")
+    updated = updated.replace("rikkahub-agent bug report", "Moataz Alaqami bug report")
+    updated = updated.replace("newer version of rikkahub-agent", "newer version of Moataz Alaqami")
+    if updated != original:
+        p.write_text(updated, encoding="utf-8")
+        print(f"updated {rel}")
+
+# Public documentation is a Moataz Alaqami surface. Legal upstream attribution remains in About/NOTICE/LICENSE.
+docs_index = ROOT / "docs/index.html"
+if docs_index.exists():
+    original = docs_index.read_text(encoding="utf-8")
+    updated = original
+    updated = updated.replace("https://extv.github.io/rikkahub-agent/", "https://github.com/Mtzallqmy/Moatazalalqami")
+    updated = updated.replace("https://raw.githubusercontent.com/ExTV/rikkahub-agent/master/docs/icon.png", "https://raw.githubusercontent.com/Mtzallqmy/Moatazalalqami/main/docs/icon.png")
+    updated = updated.replace('"author": { "@type": "Person", "name": "ExTV", "url": "https://github.com/ExTV" }', '"author": { "@type": "Person", "name": "Moataz Alaqami", "url": "https://github.com/Mtzallqmy" }')
+    updated = updated.replace("cd</span> rikkahub-agent", "cd</span> Moatazalalqami")
+    updated = updated.replace("© 2026 ExTV · AGPLv3", "© 2026 Moataz Alaqami · AGPLv3")
+    # Remove old developer-profile promotional links from the public product page.
+    updated = re.sub(r'\s*<li><a href="https://github\.com/ExTV(?:/[^"]*)?"[^>]*>.*?</a></li>', '', updated)
+    if updated != original:
+        docs_index.write_text(updated, encoding="utf-8")
+        print("updated docs/index.html")
+
 print("Moataz Alaqami modernization patches applied")

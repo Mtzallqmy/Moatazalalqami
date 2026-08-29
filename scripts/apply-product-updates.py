@@ -4,6 +4,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "app/src/main/java/me/rerere/rikkahub/ui/pages/extensions/workspace/WorkspaceDetailPage.kt"
 PREFERENCES = ROOT / "app/src/main/java/me/rerere/rikkahub/data/datastore/PreferencesStore.kt"
 CHAT_SERVICE = ROOT / "app/src/main/java/me/rerere/rikkahub/service/ChatService.kt"
+LOCAL_TOOLS = ROOT / "app/src/main/java/me/rerere/rikkahub/data/ai/tools/LocalTools.kt"
+APP_MODULE = ROOT / "app/src/main/java/me/rerere/rikkahub/di/AppModule.kt"
 
 
 def required_replace(text: str, old: str, new: str, label: str) -> str:
@@ -38,7 +40,6 @@ text = text.replace(
     "\nprivate const val DEFAULT_ROOTFS_URL =\n    \"https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-arm64.tar.gz\"",
     "",
 )
-
 PAGE.write_text(text, encoding="utf-8")
 
 # Upgrade only assistants that still have the historical untouched one-tool default. This is
@@ -51,11 +52,8 @@ prefs = required_replace(
     "import me.rerere.rikkahub.data.model.Assistant\nimport me.rerere.rikkahub.data.model.DEFAULT_AGENT_LOCAL_TOOLS\nimport me.rerere.rikkahub.data.ai.tools.LocalToolOption\n",
     "agent default migration imports",
 )
-
 legacy_block = """            // One-shot upgrade for existing installs that pre-date the agent-core auto-load:\n            // if a default-IDed assistant has an empty enabledSkills, treat it as fresh and\n            // pin agent-core. Users who deliberately added other skills are untouched.\n            assistants = assistants.map { assistant ->\n                val isDefault = DEFAULT_ASSISTANTS.any { it.id == assistant.id }\n                if (isDefault && assistant.enabledSkills.isEmpty()) {\n                    assistant.copy(enabledSkills = setOf(\"agent-core\"))\n                } else assistant\n            }.toMutableList()\n"""
-
 agent_block = legacy_block + """            // Upgrade the old untouched TimeInfo-only assistant default to the AL Agent tool\n            // profile. Any non-default tool selection is treated as an explicit user choice and\n            // preserved, so upgrades never re-enable tools a user intentionally disabled.\n            assistants = assistants.map { assistant ->\n                if (assistant.localTools == listOf(LocalToolOption.TimeInfo)) {\n                    assistant.copy(localTools = DEFAULT_AGENT_LOCAL_TOOLS)\n                } else assistant\n            }.toMutableList()\n"""
-
 prefs = required_replace(
     prefs,
     legacy_block,
@@ -81,5 +79,129 @@ chat = required_replace(
     "capability-aware chat tool gate",
 )
 CHAT_SERVICE.write_text(chat, encoding="utf-8")
+
+# Generate a durable audio attachment with the user's selected speech provider instead of merely
+# firing a transient Speak event. The common chat model already renders UIMessagePart.Audio, and
+# OpenAI-compatible tool-result encoding ignores audio parts when feeding results back to a model,
+# so models without audio input remain compatible.
+tools = LOCAL_TOOLS.read_text(encoding="utf-8")
+tools = required_replace(
+    tools,
+    "import kotlinx.coroutines.withTimeoutOrNull\n",
+    "import kotlinx.coroutines.withTimeoutOrNull\nimport kotlinx.coroutines.flow.first\n",
+    "TTS flow import",
+)
+tools = required_replace(
+    tools,
+    "import me.rerere.rikkahub.utils.writeClipboardText\n",
+    "import me.rerere.rikkahub.utils.writeClipboardText\nimport me.rerere.rikkahub.data.datastore.getSelectedTTSProvider\n",
+    "selected TTS provider import",
+)
+tools = required_replace(
+    tools,
+    "    private val settingsStore: me.rerere.rikkahub.data.datastore.SettingsStore,\n",
+    "    private val settingsStore: me.rerere.rikkahub.data.datastore.SettingsStore,\n    private val ttsManager: me.rerere.tts.provider.TTSManager,\n",
+    "TTS manager dependency",
+)
+old_tts = '''    val ttsTool by lazy {
+        Tool(
+            name = "text_to_speech",
+            description = """
+                Speak text aloud to the user using the device's text-to-speech engine.
+                Use this when the user asks you to read something aloud, or when audio output is appropriate.
+                The tool returns immediately; audio plays in the background on the device.
+                Provide natural, readable text without markdown formatting.
+            """.trimIndent().replace("\\n", " "),
+            parameters = {
+                InputSchema.Obj(
+                    properties = buildJsonObject {
+                        put("text", buildJsonObject {
+                            put("type", "string")
+                            put("description", "The text to speak aloud")
+                        })
+                    },
+                    required = listOf("text")
+                )
+            },
+            execute = {
+                val text = it.jsonObject["text"]?.jsonPrimitive?.contentOrNull
+                    ?: error("text is required")
+                eventBus.emit(AppEvent.Speak(text))
+                val payload = buildJsonObject {
+                    put("success", true)
+                }
+                listOf(UIMessagePart.Text(payload.toString()))
+            }
+        )
+    }
+'''
+new_tts = '''    val ttsTool by lazy {
+        Tool(
+            name = "text_to_speech",
+            description = """
+                Generate spoken audio from text using the user's selected TTS provider and attach the audio to the chat.
+                Use this when the user asks for speech, narration, a voice answer, or an audio version of content.
+                The generated audio remains available in the conversation for replay instead of being only transient playback.
+                Provide natural, readable text without markdown formatting.
+            """.trimIndent().replace("\\n", " "),
+            parameters = {
+                InputSchema.Obj(
+                    properties = buildJsonObject {
+                        put("text", buildJsonObject {
+                            put("type", "string")
+                            put("description", "The text to synthesize as speech")
+                        })
+                    },
+                    required = listOf("text")
+                )
+            },
+            execute = {
+                val text = it.jsonObject["text"]?.jsonPrimitive?.contentOrNull
+                    ?.trim()
+                    ?.takeIf { value -> value.isNotBlank() }
+                    ?: error("text is required")
+                val provider = settingsStore.settingsFlow.first().getSelectedTTSProvider()
+                    ?: error("No TTS provider selected")
+                val response = me.rerere.tts.controller.TtsSynthesizer(ttsManager).synthesize(
+                    setting = provider,
+                    chunk = me.rerere.tts.controller.TtsChunk(index = 0, text = text),
+                )
+                val extension = when (response.format) {
+                    me.rerere.tts.model.AudioFormat.MP3 -> "mp3"
+                    me.rerere.tts.model.AudioFormat.WAV -> "wav"
+                    me.rerere.tts.model.AudioFormat.OGG -> "ogg"
+                    me.rerere.tts.model.AudioFormat.AAC -> "aac"
+                    me.rerere.tts.model.AudioFormat.OPUS -> "opus"
+                    me.rerere.tts.model.AudioFormat.PCM -> "pcm"
+                }
+                val outputDir = java.io.File(context.filesDir, "generated_audio").apply { mkdirs() }
+                val audioFile = java.io.File(
+                    outputDir,
+                    "speech-${java.util.UUID.randomUUID()}.$extension",
+                ).apply { writeBytes(response.audioData) }
+                val payload = buildJsonObject {
+                    put("success", true)
+                    put("format", response.format.name.lowercase())
+                    put("audio_url", audioFile.toURI().toString())
+                }
+                listOf(
+                    UIMessagePart.Audio(url = audioFile.toURI().toString()),
+                    UIMessagePart.Text(payload.toString()),
+                )
+            }
+        )
+    }
+'''
+tools = required_replace(tools, old_tts, new_tts, "persistent generated TTS audio")
+LOCAL_TOOLS.write_text(tools, encoding="utf-8")
+
+module = APP_MODULE.read_text(encoding="utf-8")
+module = required_replace(
+    module,
+    "            settingsStore = get(),\n            sshHostRepository = get(),\n",
+    "            settingsStore = get(),\n            ttsManager = get(),\n            sshHostRepository = get(),\n",
+    "LocalTools TTS manager injection",
+)
+APP_MODULE.write_text(module, encoding="utf-8")
 
 print("Moataz Alaqami product updates applied")

@@ -26,6 +26,34 @@ data class Model(
     val priceCompletionPerToken: Double? = null,
 )
 
+/**
+ * Capability checks intentionally accept both the legacy manually-configured fields and richer
+ * provider metadata. This lets old saved models keep working while imported models can advertise
+ * their actual features without requiring the user to toggle every ability by hand.
+ */
+fun Model.supportsToolCalling(): Boolean =
+    ModelAbility.TOOL in abilities ||
+        ModelCapability.TOOL_CALLING in capabilities ||
+        supportedParameters.any { it == "tools" || it == "tool_choice" }
+
+fun Model.supportsReasoning(): Boolean =
+    ModelAbility.REASONING in abilities ||
+        ModelCapability.REASONING in capabilities ||
+        supportedParameters.any { it == "reasoning" || it == "include_reasoning" }
+
+fun Model.supportsImageGeneration(): Boolean =
+    type == ModelType.IMAGE ||
+        Modality.IMAGE in outputModalities ||
+        ModelCapability.IMAGE_GENERATION in capabilities ||
+        BuiltInTools.ImageGeneration in tools
+
+fun Model.supportsAudioInput(): Boolean = ModelCapability.AUDIO_INPUT in capabilities
+fun Model.supportsAudioOutput(): Boolean = ModelCapability.AUDIO_OUTPUT in capabilities
+fun Model.supportsVideoInput(): Boolean = ModelCapability.VIDEO_INPUT in capabilities
+fun Model.supportsVideoOutput(): Boolean = ModelCapability.VIDEO_OUTPUT in capabilities
+fun Model.supportsDocumentInput(): Boolean = ModelCapability.DOCUMENT_INPUT in capabilities
+fun Model.supportsDocumentOutput(): Boolean = ModelCapability.DOCUMENT_OUTPUT in capabilities
+
 @Serializable
 enum class ModelType {
     CHAT,

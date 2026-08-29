@@ -21,6 +21,9 @@ jobs:
   build-arm64:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      LLAMA_CPP_SHA: 596a5795bdd6da317ea103fc06c0a71c296e3669
+      MATERIAL_COLOR_UTILITIES_SHA: 6fd88eb3e95ba1d457842e2a2bf847d06b3a018a
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,13 +51,39 @@ jobs:
           version: 10
           run_install: false
 
-      - name: Restore source-only submodules
+      - name: Restore pinned source-only submodules
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf material3/material-color-utilities llama-cpp/native/llama.cpp
-          git clone --depth 1 https://github.com/material-foundation/material-color-utilities.git material3/material-color-utilities
-          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git llama-cpp/native/llama.cpp
+
+          checkout_revision() {
+            local url="$1"
+            local dir="$2"
+            local sha="$3"
+
+            rm -rf "$dir"
+            git init -q "$dir"
+            git -C "$dir" remote add origin "$url"
+            git -C "$dir" fetch --depth 1 origin "$sha"
+            git -C "$dir" checkout --detach -q FETCH_HEAD
+
+            local actual
+            actual="$(git -C "$dir" rev-parse HEAD)"
+            test "$actual" = "$sha" || {
+              echo "Revision mismatch for $dir: expected=$sha actual=$actual" >&2
+              exit 1
+            }
+          }
+
+          checkout_revision \
+            https://github.com/material-foundation/material-color-utilities.git \
+            material3/material-color-utilities \
+            "$MATERIAL_COLOR_UTILITIES_SHA"
+
+          checkout_revision \
+            https://github.com/ggml-org/llama.cpp.git \
+            llama-cpp/native/llama.cpp \
+            "$LLAMA_CPP_SHA"
 
       - name: Make Gradle executable
         run: chmod +x gradlew

@@ -177,6 +177,7 @@ val appModule = module {
             scheduledJobRunRepository = get(),
             cronJobScheduler = get(),
             settingsStore = get(),
+            ttsManager = get(),
             sshHostRepository = get(),
             telegramBotPreferences = get(),
             telegramBotClient = get(),

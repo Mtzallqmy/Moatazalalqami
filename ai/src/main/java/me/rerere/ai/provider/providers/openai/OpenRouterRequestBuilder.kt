@@ -120,9 +120,11 @@ fun openRouterModelFromJson(modelObj: JsonObject): Model? {
         if ("reasoning" in supported || "include_reasoning" in supported) add(ModelAbility.REASONING)
     }
 
-    // Models that can output images are typed IMAGE so they appear in the image-generation
-    // model picker (which filters strictly by ModelType.IMAGE); others stay CHAT.
-    val type = if ("image" in outMods) ModelType.IMAGE else ModelType.CHAT
+    // Keep conversational multimodal models in CHAT so they remain selectable inside normal
+    // conversations. Only image-only models are typed IMAGE for the dedicated image generator.
+    // This avoids hiding models such as Gemini image-capable variants from chat merely because
+    // they can also emit images.
+    val type = if ("image" in outMods && "text" !in outMods) ModelType.IMAGE else ModelType.CHAT
 
     return Model(
         modelId = id,

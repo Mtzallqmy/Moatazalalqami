@@ -43,6 +43,8 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.DEFAULT_AGENT_LOCAL_TOOLS
+import me.rerere.rikkahub.data.ai.tools.LocalToolOption
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.InjectionPosition
 import me.rerere.rikkahub.data.model.Lorebook
@@ -472,6 +474,14 @@ class SettingsStore(
                 val isDefault = DEFAULT_ASSISTANTS.any { it.id == assistant.id }
                 if (isDefault && assistant.enabledSkills.isEmpty()) {
                     assistant.copy(enabledSkills = setOf("agent-core"))
+                } else assistant
+            }.toMutableList()
+            // Upgrade the old untouched TimeInfo-only assistant default to the AL Agent tool
+            // profile. Any non-default tool selection is treated as an explicit user choice and
+            // preserved, so upgrades never re-enable tools a user intentionally disabled.
+            assistants = assistants.map { assistant ->
+                if (assistant.localTools == listOf(LocalToolOption.TimeInfo)) {
+                    assistant.copy(localTools = DEFAULT_AGENT_LOCAL_TOOLS)
                 } else assistant
             }.toMutableList()
             // One-shot additive enable for newly-bundled default-on skills. Each name is added

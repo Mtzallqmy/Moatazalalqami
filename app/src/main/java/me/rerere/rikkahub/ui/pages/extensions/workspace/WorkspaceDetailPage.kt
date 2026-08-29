@@ -33,7 +33,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -48,7 +47,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -294,8 +292,8 @@ fun WorkspaceDetailPage(id: String) {
             InstallRootfsDialog(
                 workspace = workspace,
                 onDismiss = { showInstallDialog = false },
-                onConfirm = { url ->
-                    vm.installRootfs(url)
+                onConfirm = {
+                    vm.installEmbeddedRootfs()
                     showInstallDialog = false
                 },
             )
@@ -576,35 +574,21 @@ private fun RootfsProgress(progress: RootfsInstallProgress) {
 private fun InstallRootfsDialog(
     workspace: WorkspaceEntity,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: () -> Unit,
 ) {
-    var url by rememberSaveable(workspace.id) { mutableStateOf(DEFAULT_ROOTFS_URL) }
-
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.workspace_detail_install_rootfs)) },
+        title = { Text("Repair embedded Linux") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.workspace_detail_install_rootfs_desc, workspace.name),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.workspace_detail_download_url)) },
-                    maxLines = 5,
-                )
-            }
+            Text(
+                text = "${workspace.name} uses the Alpine Linux environment packaged inside this APK. Repair reinstalls it locally; no rootfs URL or separate download is required.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
         confirmButton = {
-            TextButton(
-                onClick = { onConfirm(url.trim()) },
-                enabled = url.isNotBlank(),
-            ) {
-                Text(stringResource(R.string.common_install))
+            TextButton(onClick = onConfirm) {
+                Text("Repair")
             }
         },
         dismissButton = {
@@ -903,5 +887,3 @@ internal fun String.toShellStatusLabel(): String = when (this) {
     else -> lowercase()
 }
 
-private const val DEFAULT_ROOTFS_URL =
-    "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-arm64.tar.gz"

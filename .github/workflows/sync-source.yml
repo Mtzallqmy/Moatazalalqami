@@ -1,0 +1,68 @@
+name: Import and modernize source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/sync-source.yml'
+      - 'scripts/modernize.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: moataz-source-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Moataz Alaqami
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Import complete upstream source and submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/ExTV/rikkahub-agent.git /tmp/rikkahub-agent
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github/workflows/' \
+            --exclude='README.md' \
+            --exclude='NOTICE' \
+            --exclude='docs/MODERNIZATION.md' \
+            --exclude='scripts/modernize.py' \
+            /tmp/rikkahub-agent/ ./
+
+      - name: Apply Moataz Alaqami 3.0 modernization
+        run: python3 scripts/modernize.py
+
+      - name: Set project identity
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('settings.gradle.kts')
+          s = p.read_text()
+          import re
+          s = re.sub(r'rootProject\.name\s*=\s*"[^"]+"', 'rootProject.name = "MoatazAlaqami"', s, count=1)
+          p.write_text(s)
+          PY
+
+      - name: Commit complete modernized project
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Moataz Alaqami Build Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git commit -m 'feat: import complete source and apply Moataz Alaqami 3.0 modernization [skip ci]'
+          git push origin HEAD:main

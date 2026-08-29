@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "app/src/main/java/me/rerere/rikkahub/ui/pages/extensions/workspace/WorkspaceDetailPage.kt"
 PREFERENCES = ROOT / "app/src/main/java/me/rerere/rikkahub/data/datastore/PreferencesStore.kt"
+CHAT_SERVICE = ROOT / "app/src/main/java/me/rerere/rikkahub/service/ChatService.kt"
 
 
 def required_replace(text: str, old: str, new: str, label: str) -> str:
@@ -61,6 +62,24 @@ prefs = required_replace(
     agent_block,
     "legacy assistant agent-tool migration",
 )
-
 PREFERENCES.write_text(prefs, encoding="utf-8")
+
+# ChatService historically gated all client tools on the manual ModelAbility.TOOL flag. Use the
+# unified capability resolver so provider-advertised `tools`/`tool_choice` metadata and registry
+# inference activate the same agent tool path without requiring manual per-model toggles.
+chat = CHAT_SERVICE.read_text(encoding="utf-8")
+chat = required_replace(
+    chat,
+    "import me.rerere.ai.provider.ModelAbility\n",
+    "import me.rerere.ai.provider.supportsToolCalling\n",
+    "capability-aware tool import",
+)
+chat = required_replace(
+    chat,
+    "if (!model.abilities.contains(ModelAbility.TOOL)) {",
+    "if (!model.supportsToolCalling()) {",
+    "capability-aware chat tool gate",
+)
+CHAT_SERVICE.write_text(chat, encoding="utf-8")
+
 print("Moataz Alaqami product updates applied")

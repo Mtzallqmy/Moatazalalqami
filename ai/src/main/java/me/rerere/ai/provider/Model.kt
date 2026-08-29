@@ -17,9 +17,11 @@ data class Model(
     val abilities: List<ModelAbility> = emptyList(),
     val tools: Set<BuiltInTools> = emptySet(),
     val providerOverwrite: ProviderSetting? = null,
-    // Optional capability/pricing metadata, populated from OpenRouter's /models endpoint.
+    // Optional capability/pricing metadata, populated from provider model metadata.
     val contextLength: Int? = null,
     val supportedParameters: List<String> = emptyList(),
+    /** Provider-advertised capabilities that do not fit the legacy TEXT/IMAGE modality enum. */
+    val capabilities: Set<ModelCapability> = emptySet(),
     val pricePromptPerToken: Double? = null,
     val priceCompletionPerToken: Double? = null,
 )
@@ -43,6 +45,27 @@ enum class ModelAbility {
     REASONING,
 }
 
+/**
+ * Extended provider capabilities used by chat/agent routing without expanding the legacy
+ * [Modality] enum and breaking persisted settings or exhaustive UI `when` expressions.
+ */
+@Serializable
+enum class ModelCapability {
+    AUDIO_INPUT,
+    AUDIO_OUTPUT,
+    VIDEO_INPUT,
+    VIDEO_OUTPUT,
+    DOCUMENT_INPUT,
+    DOCUMENT_OUTPUT,
+    IMAGE_GENERATION,
+    TOOL_CALLING,
+    REASONING,
+    WEB_SEARCH,
+    URL_CONTEXT,
+    FILE_SEARCH,
+    CODE_EXECUTION,
+}
+
 // 模型(提供商)提供的内置工具选项
 @Serializable
 sealed class BuiltInTools {
@@ -60,6 +83,3 @@ sealed class BuiltInTools {
     @SerialName("image_generation")
     data object ImageGeneration : BuiltInTools()
 }
-
-
-

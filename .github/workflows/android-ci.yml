@@ -88,21 +88,21 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
-      - name: Build arm64 debug APK
+      - name: Test and build arm64 debug APK
         id: gradle_build
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew :app:assembleDebug --stacktrace --console=plain 2>&1 | tee gradle-build.log
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace --console=plain 2>&1 | tee gradle-build.log
 
       - name: Summarize Gradle failure
         if: failure() && steps.gradle_build.outcome == 'failure'
         shell: bash
         run: |
           {
-            echo '## Gradle failure tail'
+            echo '## Gradle test/build failure tail'
             echo '```text'
             tail -n 220 gradle-build.log
             echo '```'

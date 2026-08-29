@@ -60,9 +60,33 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build arm64 debug APK
+        id: gradle_build
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
-        run: ./gradlew :app:assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace --console=plain 2>&1 | tee gradle-build.log
+
+      - name: Summarize Gradle failure
+        if: failure() && steps.gradle_build.outcome == 'failure'
+        shell: bash
+        run: |
+          {
+            echo '## Gradle failure tail'
+            echo '```text'
+            tail -n 220 gradle-build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Gradle diagnostics
+        if: failure() && steps.gradle_build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-diagnostics
+          path: gradle-build.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify arm64 APK
         if: success()

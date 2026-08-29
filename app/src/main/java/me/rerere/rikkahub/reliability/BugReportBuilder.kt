@@ -44,7 +44,7 @@ class BugReportBuilder(private val context: Context) {
     suspend fun build(): File = withContext(Dispatchers.IO) {
         val ts = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val outDir = File(context.cacheDir, "bug_reports").apply { mkdirs() }
-        val zipFile = File(outDir, "rikkahub-agent-bug-$ts.zip")
+        val zipFile = File(outDir, "moataz-alaqami-bug-$ts.zip")
 
         ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
             zip.putEntry("meta.txt", buildMeta())
@@ -62,7 +62,7 @@ class BugReportBuilder(private val context: Context) {
     }
 
     private fun buildMeta(): String = buildString {
-        append("App: rikkahub-agent\n")
+        append("App: Moataz Alaqami\n")
         append("Version: ${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})\n")
         append("Build type: ${BuildConfig.BUILD_TYPE}\n")
         append("Application ID: ${BuildConfig.APPLICATION_ID}\n")
@@ -75,7 +75,7 @@ class BugReportBuilder(private val context: Context) {
 
     private fun buildReadme(): String =
         """
-        rikkahub-agent bug report
+        Moataz Alaqami bug report
         =========================
 
         This ZIP was generated locally on the device. It contains:

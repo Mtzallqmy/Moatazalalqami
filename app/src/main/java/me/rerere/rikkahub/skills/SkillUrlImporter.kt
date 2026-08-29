@@ -153,7 +153,7 @@ class SkillUrlImporter(
     private fun fetch(url: String): String {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", "rikkahub-agent/skill-importer")
+            .header("User-Agent", "moataz-alaqami/skill-importer")
             .header("Accept", "text/markdown, text/plain, application/json, */*")
             .build()
         httpClient.newCall(req).execute().use { resp ->

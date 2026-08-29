@@ -7,20 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Coverage for [buildWorkspaceReminder] — the pure state -> system-prompt selector.
- *
- * Contract:
- * - bound + READY            -> full `<workspace>` block advertising the workspace_* tools
- * - bound + not READY        -> `<workspace-setup>` telling the model how to guide the user to
- *                               install/repair the rootfs (tailored per DISABLED/INSTALLING/BROKEN)
- * - unbound, workspaces exist -> `<workspace-setup>` telling the model how to guide binding via +
- * - no workspace at all       -> null (nothing injected)
- *
- * Note: the READY block is the only one containing the exact tag `<workspace>`; the guidance
- * blocks use `<workspace-setup>`, so `contains("<workspace>")` distinguishes "tools live" from
- * "tools unavailable, here's how to enable".
- */
+/** Coverage for the pure workspace-state -> system-prompt selector. */
 class WorkspaceReminderTransformerTest {
 
     private fun workspace(status: WorkspaceShellStatus, name: String = "demo") = WorkspaceEntity(
@@ -33,48 +20,52 @@ class WorkspaceReminderTransformerTest {
     )
 
     @Test
-    fun `bound and READY yields the full workspace block with tools`() {
+    fun `bound and READY advertises tools and bundled Linux environment`() {
         val prompt = buildWorkspaceReminder(workspace(WorkspaceShellStatus.READY, "proj"), hasAnyWorkspace = true)
         requireNotNull(prompt)
         assertTrue(prompt.contains("<workspace>"))
         assertTrue(prompt.contains("proj"))
         assertTrue(prompt.contains("workspace_shell"))
+        assertTrue(prompt.contains("embedded with the app"))
+        assertTrue(prompt.contains("Never ask the user to download a rootfs URL"))
     }
 
     @Test
-    fun `bound but DISABLED yields setup guidance to install the rootfs`() {
+    fun `bound but DISABLED directs user to embedded provisioning`() {
         val prompt = buildWorkspaceReminder(workspace(WorkspaceShellStatus.DISABLED), hasAnyWorkspace = true)
         requireNotNull(prompt)
         assertTrue(prompt.contains("<workspace-setup>"))
-        // must NOT masquerade as the tools-live block
         assertFalse(prompt.contains("<workspace>"))
-        assertTrue(prompt.contains("install its rootfs"))
+        assertTrue(prompt.contains("provision the embedded Linux environment"))
+        assertTrue(prompt.contains("No external rootfs URL"))
         assertTrue(prompt.contains(WorkspaceShellStatus.DISABLED.name))
     }
 
     @Test
-    fun `bound but INSTALLING tells the user to wait`() {
+    fun `bound but INSTALLING describes local provisioning`() {
         val prompt = buildWorkspaceReminder(workspace(WorkspaceShellStatus.INSTALLING), hasAnyWorkspace = true)
         requireNotNull(prompt)
         assertTrue(prompt.contains("<workspace-setup>"))
-        assertTrue(prompt.contains("installing"))
+        assertTrue(prompt.contains("being provisioned locally"))
     }
 
     @Test
-    fun `bound but BROKEN tells the user to reinstall or repair`() {
+    fun `bound but BROKEN directs user to embedded repair`() {
         val prompt = buildWorkspaceReminder(workspace(WorkspaceShellStatus.BROKEN), hasAnyWorkspace = true)
         requireNotNull(prompt)
         assertTrue(prompt.contains("<workspace-setup>"))
-        assertTrue(prompt.contains("broken"))
+        assertTrue(prompt.contains("Repair embedded Linux"))
+        assertFalse(prompt.contains("paste a rootfs URL"))
     }
 
     @Test
-    fun `unbound but workspaces exist yields binding guidance`() {
+    fun `unbound workspace guidance mentions bundled rootfs`() {
         val prompt = buildWorkspaceReminder(workspace = null, hasAnyWorkspace = true)
         requireNotNull(prompt)
         assertTrue(prompt.contains("<workspace-setup>"))
         assertFalse(prompt.contains("<workspace>"))
         assertTrue(prompt.contains("+ button"))
+        assertTrue(prompt.contains("rootfs is bundled with the app"))
     }
 
     @Test

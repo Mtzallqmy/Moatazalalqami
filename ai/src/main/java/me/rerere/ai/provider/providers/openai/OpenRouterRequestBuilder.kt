@@ -14,6 +14,7 @@ import kotlinx.serialization.json.putJsonObject
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ModelCapability
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.OpenRouterRouting
 
@@ -38,7 +39,6 @@ fun buildProviderObject(routing: OpenRouterRouting, hasToolsOrSchema: Boolean): 
         if (routing.order.isNotEmpty()) putJsonArray("order") { routing.order.forEach { add(it) } }
         if (routing.only.isNotEmpty()) putJsonArray("only") { routing.only.forEach { add(it) } }
         if (routing.ignore.isNotEmpty()) putJsonArray("ignore") { routing.ignore.forEach { add(it) } }
-        // allow_fallbacks is only meaningful alongside order/only
         if ((routing.order.isNotEmpty() || routing.only.isNotEmpty()) && !routing.allowFallbacks) {
             put("allow_fallbacks", false)
         }
@@ -57,12 +57,6 @@ fun buildProviderObject(routing: OpenRouterRouting, hasToolsOrSchema: Boolean): 
     }
 }
 
-/**
- * Build the top-level `models` fallback array: OpenRouter tries these ids in order when
- * the primary model is down, rate-limited, or refuses on moderation. Null when no usable
- * fallback is configured. The primary id is excluded so it is never retried as its own
- * fallback. https://openrouter.ai/docs/guides/routing/model-fallbacks
- */
 fun buildFallbackModelsArray(primaryModelId: String, routing: OpenRouterRouting): JsonArray? {
     val fallbacks = routing.fallbackModels
         .map { it.trim() }
@@ -77,22 +71,15 @@ data class ParsedImageDataUri(val mime: String, val base64: String)
 private val DATA_URI_REGEX =
     Regex("^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", RegexOption.DOT_MATCHES_ALL)
 
-/**
- * Parse any image data URI (png/jpeg/webp/...) into its mime and base64 payload.
- * Returns null for non-data-URIs (e.g. http URLs) or malformed input.
- *
- * Replaces the old hardcoded `substringAfter("data:image/png;base64,")`, which silently
- * returned the whole string for non-png mimes and produced unrenderable bytes.
- */
 fun parseImageDataUri(url: String): ParsedImageDataUri? {
     val m = DATA_URI_REGEX.matchEntire(url.trim()) ?: return null
     return ParsedImageDataUri(mime = m.groupValues[1], base64 = m.groupValues[2])
 }
 
 /**
- * Map one item from OpenRouter's `GET /models` `data[]` into a [Model] with capabilities
- * and pricing detected from `architecture` / `supported_parameters` / `pricing`, so image
- * models, tool models and reasoning models work on import without manual toggling.
+ * Map OpenRouter model metadata into chat routing metadata. Legacy TEXT/IMAGE fields are kept
+ * for compatibility while [ModelCapability] captures richer audio/video/document/server-tool
+ * capabilities for the agent and future provider-specific routing.
  */
 fun openRouterModelFromJson(modelObj: JsonObject): Model? {
     val id = modelObj["id"]?.jsonPrimitive?.contentOrNull ?: return null
@@ -119,10 +106,25 @@ fun openRouterModelFromJson(modelObj: JsonObject): Model? {
         if ("tools" in supported || "tool_choice" in supported) add(ModelAbility.TOOL)
         if ("reasoning" in supported || "include_reasoning" in supported) add(ModelAbility.REASONING)
     }
+    val capabilities = buildSet {
+        if ("audio" in inMods) add(ModelCapability.AUDIO_INPUT)
+        if ("audio" in outMods) add(ModelCapability.AUDIO_OUTPUT)
+        if ("video" in inMods) add(ModelCapability.VIDEO_INPUT)
+        if ("video" in outMods) add(ModelCapability.VIDEO_OUTPUT)
+        if ("file" in inMods || "document" in inMods) add(ModelCapability.DOCUMENT_INPUT)
+        if ("file" in outMods || "document" in outMods) add(ModelCapability.DOCUMENT_OUTPUT)
+        if ("image" in outMods) add(ModelCapability.IMAGE_GENERATION)
+        if ("tools" in supported || "tool_choice" in supported) add(ModelCapability.TOOL_CALLING)
+        if ("reasoning" in supported || "include_reasoning" in supported) add(ModelCapability.REASONING)
+        if (supported.any { it in setOf("web_search", "web_search_options") }) add(ModelCapability.WEB_SEARCH)
+        if (supported.any { it in setOf("url_context", "url_context_tool") }) add(ModelCapability.URL_CONTEXT)
+        if (supported.any { it in setOf("file_search", "file_search_tool") }) add(ModelCapability.FILE_SEARCH)
+        if (supported.any { it in setOf("code_interpreter", "code_execution", "computer") }) add(ModelCapability.CODE_EXECUTION)
+    }
 
-    // Models that can output images are typed IMAGE so they appear in the image-generation
-    // model picker (which filters strictly by ModelType.IMAGE); others stay CHAT.
-    val type = if ("image" in outMods) ModelType.IMAGE else ModelType.CHAT
+    // Multimodal conversational models stay selectable in normal chat. Only image-only
+    // endpoints belong exclusively to the dedicated image-generation picker.
+    val type = if ("image" in outMods && "text" !in outMods) ModelType.IMAGE else ModelType.CHAT
 
     return Model(
         modelId = id,
@@ -133,7 +135,7 @@ fun openRouterModelFromJson(modelObj: JsonObject): Model? {
         abilities = abilities,
         contextLength = modelObj["context_length"]?.jsonPrimitive?.intOrNull,
         supportedParameters = supported,
-        // OpenRouter pricing values are strings of USD-per-token.
+        capabilities = capabilities,
         pricePromptPerToken = pricing?.get("prompt")?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
         priceCompletionPerToken = pricing?.get("completion")?.jsonPrimitive?.contentOrNull?.toDoubleOrNull(),
     )

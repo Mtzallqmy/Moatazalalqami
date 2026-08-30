@@ -5,6 +5,7 @@ import com.whl.quickjs.wrapper.QuickJSContext
 import com.whl.quickjs.wrapper.QuickJSObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -125,6 +126,7 @@ import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.utils.readClipboardText
 import me.rerere.rikkahub.utils.writeClipboardText
+import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import java.time.ZonedDateTime
 import java.time.format.TextStyle
 import java.util.Locale
@@ -336,6 +338,7 @@ class LocalTools(
     private val scheduledJobRunRepository: me.rerere.rikkahub.data.repository.ScheduledJobRunRepository,
     private val cronJobScheduler: me.rerere.rikkahub.service.CronJobScheduler,
     private val settingsStore: me.rerere.rikkahub.data.datastore.SettingsStore,
+    private val ttsManager: me.rerere.tts.provider.TTSManager,
     private val sshHostRepository: me.rerere.rikkahub.data.repository.SshHostRepository,
     private val telegramBotPreferences: me.rerere.rikkahub.data.telegram.TelegramBotPreferences,
     private val telegramBotClient: me.rerere.rikkahub.data.telegram.TelegramBotClient,
@@ -605,9 +608,9 @@ class LocalTools(
         Tool(
             name = "text_to_speech",
             description = """
-                Speak text aloud to the user using the device's text-to-speech engine.
-                Use this when the user asks you to read something aloud, or when audio output is appropriate.
-                The tool returns immediately; audio plays in the background on the device.
+                Generate spoken audio from text using the user's selected TTS provider and attach the audio to the chat.
+                Use this when the user asks for speech, narration, a voice answer, or an audio version of content.
+                The generated audio remains available in the conversation for replay instead of being only transient playback.
                 Provide natural, readable text without markdown formatting.
             """.trimIndent().replace("\n", " "),
             parameters = {
@@ -615,7 +618,7 @@ class LocalTools(
                     properties = buildJsonObject {
                         put("text", buildJsonObject {
                             put("type", "string")
-                            put("description", "The text to speak aloud")
+                            put("description", "The text to synthesize as speech")
                         })
                     },
                     required = listOf("text")
@@ -623,12 +626,37 @@ class LocalTools(
             },
             execute = {
                 val text = it.jsonObject["text"]?.jsonPrimitive?.contentOrNull
+                    ?.trim()
+                    ?.takeIf { value -> value.isNotBlank() }
                     ?: error("text is required")
-                eventBus.emit(AppEvent.Speak(text))
+                val provider = settingsStore.settingsFlow.first().getSelectedTTSProvider()
+                    ?: error("No TTS provider selected")
+                val response = me.rerere.tts.controller.TtsSynthesizer(ttsManager).synthesize(
+                    setting = provider,
+                    chunk = me.rerere.tts.controller.TtsChunk(index = 0, text = text),
+                )
+                val extension = when (response.format) {
+                    me.rerere.tts.model.AudioFormat.MP3 -> "mp3"
+                    me.rerere.tts.model.AudioFormat.WAV -> "wav"
+                    me.rerere.tts.model.AudioFormat.OGG -> "ogg"
+                    me.rerere.tts.model.AudioFormat.AAC -> "aac"
+                    me.rerere.tts.model.AudioFormat.OPUS -> "opus"
+                    me.rerere.tts.model.AudioFormat.PCM -> "pcm"
+                }
+                val outputDir = java.io.File(context.filesDir, "generated_audio").apply { mkdirs() }
+                val audioFile = java.io.File(
+                    outputDir,
+                    "speech-${java.util.UUID.randomUUID()}.$extension",
+                ).apply { writeBytes(response.audioData) }
                 val payload = buildJsonObject {
                     put("success", true)
+                    put("format", response.format.name.lowercase())
+                    put("audio_url", audioFile.toURI().toString())
                 }
-                listOf(UIMessagePart.Text(payload.toString()))
+                listOf(
+                    UIMessagePart.Audio(url = audioFile.toURI().toString()),
+                    UIMessagePart.Text(payload.toString()),
+                )
             }
         )
     }

@@ -96,12 +96,12 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
-      - name: Build signed arm64 APK and AAB
+      - name: Test and build signed arm64 APK and AAB
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
+          ./gradlew :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease --stacktrace --console=plain
 
       - name: Verify release APK ABI
         shell: bash

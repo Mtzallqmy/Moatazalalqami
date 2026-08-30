@@ -195,4 +195,11 @@ internal fun shouldAutoCreateParent(rawPath: String, expandedPath: String): Bool
         expandedPath.startsWith("/sdcard/Pictures/MoatazAlaqami/") ||
         expandedPath.startsWith("/storage/emulated/0/Documents/MoatazAlaqami/") ||
         expandedPath.startsWith("/storage/emulated/0/Download/MoatazAlaqami/") ||
-        expandedPath.startsWith("/storage/emulated/0/Pictures/MoatazAlaqami/")
+        expandedPath.startsWith("/storage/emulated/0/Pictures/MoatazAlaqami/") ||
+        // Backward compatibility for workspaces created before the product rename.
+        expandedPath.startsWith("/sdcard/Documents/RikkaHub/") ||
+        expandedPath.startsWith("/sdcard/Download/RikkaHub/") ||
+        expandedPath.startsWith("/sdcard/Pictures/RikkaHub/") ||
+        expandedPath.startsWith("/storage/emulated/0/Documents/RikkaHub/") ||
+        expandedPath.startsWith("/storage/emulated/0/Download/RikkaHub/") ||
+        expandedPath.startsWith("/storage/emulated/0/Pictures/RikkaHub/")

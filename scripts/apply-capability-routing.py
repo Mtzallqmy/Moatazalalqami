@@ -23,6 +23,32 @@ text = required_replace(
     "native image generation imports",
 )
 
+# Kotlin cannot reliably smart-cast a nullable property when it is read more than once
+# (for example when the property comes from an interface/custom getter). Stabilize the
+# provider-supplied partial index in a local val so the selected slot is always Int.
+old_slot_routing = """            imageFlow.collect { item ->
+                val slot = when {
+                    item.partialImageIndex != null -> item.partialImageIndex
+                    !item.partial && partialSlots.isNotEmpty() -> partialSlots.first()
+                    else -> nextSlot++
+                }
+                nextSlot = maxOf(nextSlot, slot + 1)
+                if (item.partial) partialSlots += slot else partialSlots -= slot
+"""
+fixed_slot_routing = """            imageFlow.collect { item ->
+                val partialImageIndex = item.partialImageIndex
+                val slot: Int = when {
+                    partialImageIndex != null -> partialImageIndex
+                    !item.partial && partialSlots.isNotEmpty() -> partialSlots.first()
+                    else -> nextSlot++
+                }
+                nextSlot = maxOf(nextSlot, slot + 1)
+                if (item.partial) partialSlots += slot else partialSlots -= slot
+"""
+if old_slot_routing in text:
+    print("updated: stable image generation slot index")
+    text = text.replace(old_slot_routing, fixed_slot_routing, 1)
+
 anchor = """        val provider = model.findProvider(settings.providers) ?: error(\"Provider not found\")
         val providerImpl = providerManager.getProviderByType(provider)
 
@@ -77,8 +103,9 @@ replacement = """        val provider = model.findProvider(settings.providers) ?
             }
 
             imageFlow.collect { item ->
-                val slot = when {
-                    item.partialImageIndex != null -> item.partialImageIndex
+                val partialImageIndex = item.partialImageIndex
+                val slot: Int = when {
+                    partialImageIndex != null -> partialImageIndex
                     !item.partial && partialSlots.isNotEmpty() -> partialSlots.first()
                     else -> nextSlot++
                 }

@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATION_HANDLER = ROOT / "app/src/main/java/me/rerere/rikkahub/data/ai/GenerationHandler.kt"
+ASSISTANT = ROOT / "app/src/main/java/me/rerere/rikkahub/data/model/Assistant.kt"
 
 
 def required_replace(text: str, old: str, new: str, label: str) -> str:
@@ -131,4 +132,20 @@ replacement = """        val provider = model.findProvider(settings.providers) ?
 text = required_replace(text, anchor, replacement, "image-model chat routing")
 GENERATION_HANDLER.write_text(text, encoding="utf-8")
 
-print("Capability-aware provider routing applied")
+assistant = ASSISTANT.read_text(encoding="utf-8")
+assistant = required_replace(
+    assistant,
+    """    LocalToolOption.JavascriptEngine,
+    LocalToolOption.Files,
+    LocalToolOption.Browser,
+""",
+    """    LocalToolOption.JavascriptEngine,
+    LocalToolOption.Termux,
+    LocalToolOption.Files,
+    LocalToolOption.Browser,
+""",
+    "AL Agent Termux programming environment",
+)
+ASSISTANT.write_text(assistant, encoding="utf-8")
+
+print("Capability-aware provider routing and AL Agent defaults applied")

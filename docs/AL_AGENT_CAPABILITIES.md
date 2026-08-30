@@ -31,6 +31,8 @@ The common model layer can currently represent:
 
 Dedicated `ModelType.IMAGE` endpoints are routed from the normal conversation surface through the provider's `generateImage` API. If the latest user message also contains input images, the same route uses `editImage`. Partial provider images replace their preview slot in-place and the final image is stored as a first-class chat image. Multimodal `CHAT` models are deliberately kept on the streaming response path so they can return mixed text, reasoning, tools and image output in one turn instead of being incorrectly reduced to an image-only endpoint.
 
+Image-generation preview slot selection must remain a non-null `Int` after routing. Provider-supplied nullable partial indexes are stabilized in a local value before slot selection so Kotlin compilation and multi-preview replacement stay deterministic across provider implementations.
+
 OpenAI Responses-style server tools and image-generation streaming continue through the common stream decoder. Provider-specific features are only exposed when the selected provider/model advertises or implements them.
 
 ## Default AL Agent profile

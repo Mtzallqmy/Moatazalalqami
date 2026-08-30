@@ -1,0 +1,125 @@
+name: Release v3.0.0 once
+
+on:
+  push:
+    branches:
+      - 'feat/product-updates'
+
+permissions:
+  contents: write
+
+jobs:
+  release-arm64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      LLAMA_CPP_SHA: 596a5795bdd6da317ea103fc06c0a71c296e3669
+      MATERIAL_COLOR_UTILITIES_SHA: 6fd88eb3e95ba1d457842e2a2bf847d06b3a018a
+      RELEASE_SHA: 9de7fe72e6497626b4eeb09a22c11eaa452bb18b
+    steps:
+      - name: Checkout exact merged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Restore pinned source-only submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+          checkout_revision() {
+            local url="$1"
+            local dir="$2"
+            local sha="$3"
+            rm -rf "$dir"
+            git init -q "$dir"
+            git -C "$dir" remote add origin "$url"
+            git -C "$dir" fetch --depth 1 origin "$sha"
+            git -C "$dir" checkout --detach -q FETCH_HEAD
+            local actual
+            actual="$(git -C "$dir" rev-parse HEAD)"
+            test "$actual" = "$sha"
+          }
+          checkout_revision https://github.com/material-foundation/material-color-utilities.git material3/material-color-utilities "$MATERIAL_COLOR_UTILITIES_SHA"
+          checkout_revision https://github.com/ggml-org/llama.cpp.git llama-cpp/native/llama.cpp "$LLAMA_CPP_SHA"
+
+      - name: Configure release signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo 'ANDROID_KEYSTORE_BASE64 is required'; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo 'ANDROID_STORE_PASSWORD is required'; exit 1; }
+          test -n "$KEY_ALIAS" || { echo 'ANDROID_KEY_ALIAS is required'; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo 'ANDROID_KEY_PASSWORD is required'; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/moataz-release.jks"
+          cat > local.properties <<EOF
+          storeFile=$RUNNER_TEMP/moataz-release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Test and build signed arm64 APK and AAB
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease --stacktrace --console=plain
+
+      - name: Verify release APK ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
+          if unzip -l "$APK" | grep -Eq 'lib/(x86|x86_64|armeabi-v7a)/'; then
+            echo 'Unexpected non-arm64 native libraries found in release APK' >&2
+            exit 1
+          fi
+
+      - name: Upload signed release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: moataz-alaqami-release-v3.0.0-arm64
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release v3.0.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v3.0.0
+          target_commitish: ${{ env.RELEASE_SHA }}
+          name: Moataz Alaqami v3.0.0
+          generate_release_notes: true
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab

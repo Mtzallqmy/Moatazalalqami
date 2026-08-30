@@ -24,6 +24,7 @@ val DEFAULT_AGENT_LOCAL_TOOLS: List<LocalToolOption> = listOf(
     LocalToolOption.AskUser,
     LocalToolOption.Tts,
     LocalToolOption.JavascriptEngine,
+    LocalToolOption.Termux,
     LocalToolOption.Files,
     LocalToolOption.Browser,
     LocalToolOption.SubAgents,

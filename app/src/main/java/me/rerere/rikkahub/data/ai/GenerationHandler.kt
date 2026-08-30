@@ -32,7 +32,10 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.CustomBody
+import me.rerere.ai.provider.ImageEditParams
+import me.rerere.ai.provider.ImageGenerationParams
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
@@ -483,6 +486,102 @@ class GenerationHandler(
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
+
+        // Dedicated image endpoints are real generation models, not text-chat endpoints. Route
+        // them through the provider's image API while keeping multimodal CHAT models on the
+        // normal streaming path (those models can still return text + image/tool parts together).
+        if (model.type == ModelType.IMAGE) {
+            val latestUserMessage = messages.lastOrNull { it.role == MessageRole.USER }
+                ?: error("Image generation requires a user message")
+            val prompt = latestUserMessage.toText().trim()
+            require(prompt.isNotBlank()) { "Image generation requires a text prompt" }
+
+            onBeforeModelRequest()
+            processingStatus.value = "Generating image…"
+
+            val imageMessageId = Uuid.random()
+            val imageParts = linkedMapOf<Int, UIMessagePart.Image>()
+            val partialSlots = sortedSetOf<Int>()
+            var nextSlot = 0
+
+            val inputImages = latestUserMessage.parts
+                .filterIsInstance<UIMessagePart.Image>()
+                .map(UIMessagePart.Image::url)
+                .filter(String::isNotBlank)
+
+            val imageFlow = if (inputImages.isEmpty()) {
+                providerImpl.generateImage(
+                    providerSetting = provider,
+                    params = ImageGenerationParams(
+                        model = model,
+                        prompt = prompt,
+                        customHeaders = model.customHeaders,
+                        customBody = model.customBodies,
+                    ),
+                )
+            } else {
+                providerImpl.editImage(
+                    providerSetting = provider,
+                    params = ImageEditParams(
+                        model = model,
+                        prompt = prompt,
+                        images = inputImages,
+                        customHeaders = model.customHeaders,
+                        customBody = model.customBodies,
+                    ),
+                )
+            }
+
+            imageFlow.collect { item ->
+                val slot = when {
+                    item.partialImageIndex != null -> item.partialImageIndex
+                    !item.partial && partialSlots.isNotEmpty() -> partialSlots.first()
+                    else -> nextSlot++
+                }
+                nextSlot = maxOf(nextSlot, slot + 1)
+                if (item.partial) partialSlots += slot else partialSlots -= slot
+
+                val raw = item.data.trim()
+                val imageUrl = when {
+                    raw.startsWith("data:") ||
+                        raw.startsWith("http://") ||
+                        raw.startsWith("https://") ||
+                        raw.startsWith("file://") ||
+                        raw.startsWith("content://") -> raw
+                    else -> "data:${item.mimeType};base64,$raw"
+                }
+                imageParts[slot] = UIMessagePart.Image(url = imageUrl)
+
+                emit(
+                    GenerationChunk.Messages(
+                        messages + UIMessage(
+                            id = imageMessageId,
+                            role = MessageRole.ASSISTANT,
+                            parts = imageParts.toSortedMap().values.toList(),
+                            modelId = model.id,
+                        )
+                    )
+                )
+            }
+
+            if (imageParts.isEmpty()) {
+                error("Provider returned no image data")
+            }
+
+            processingStatus.value = null
+            emit(
+                GenerationChunk.Messages(
+                    messages + UIMessage(
+                        id = imageMessageId,
+                        role = MessageRole.ASSISTANT,
+                        parts = imageParts.toSortedMap().values.toList(),
+                        finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+                        modelId = model.id,
+                    )
+                )
+            )
+            return@flow
+        }
 
         // Replay safety: scan the input messages for tools that were Approved + began
         // execution but never produced output (process killed mid-execute). Without this

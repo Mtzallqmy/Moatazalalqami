@@ -16,6 +16,7 @@ class AssistantDefaultsTest {
             LocalToolOption.AskUser,
             LocalToolOption.Tts,
             LocalToolOption.JavascriptEngine,
+            LocalToolOption.Termux,
             LocalToolOption.Files,
             LocalToolOption.Browser,
             LocalToolOption.SubAgents,

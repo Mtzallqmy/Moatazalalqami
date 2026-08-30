@@ -1,0 +1,27 @@
+name: Bootstrap first v3.0.0 release
+
+on:
+  push:
+    branches:
+      - 'release-v3.0.0-bootstrap'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish first GitHub Release v3.0.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v3.0.0
+          target_commitish: 9de7fe72e6497626b4eeb09a22c11eaa452bb18b
+          name: Moataz Alaqami v3.0.0 (Unsigned)
+          generate_release_notes: true
+          body: |
+            First GitHub release for Moataz Alaqami.
+
+            Release source: 9de7fe72e6497626b4eeb09a22c11eaa452bb18b (v3.0.0, arm64-v8a).
+
+            The Android release artifact is intentionally unsigned per the project owner's request. It requires signing before standard Android installation or Google Play distribution.

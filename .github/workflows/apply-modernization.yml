@@ -37,5 +37,5 @@ jobs:
             echo 'No source changes required.'
             exit 0
           fi
-          git commit -m 'feat: apply Moataz Alaqami product modernization [skip ci]'
+          git commit -m 'feat: apply Moataz Alaqami product modernization'
           git push origin "HEAD:${GITHUB_REF_NAME}"

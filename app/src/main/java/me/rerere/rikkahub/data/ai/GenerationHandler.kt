@@ -533,8 +533,9 @@ class GenerationHandler(
             }
 
             imageFlow.collect { item ->
-                val slot = when {
-                    item.partialImageIndex != null -> item.partialImageIndex
+                val partialImageIndex = item.partialImageIndex
+                val slot: Int = when {
+                    partialImageIndex != null -> partialImageIndex
                     !item.partial && partialSlots.isNotEmpty() -> partialSlots.first()
                     else -> nextSlot++
                 }

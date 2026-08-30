@@ -49,7 +49,11 @@ Sensitive phone/device capabilities such as SMS sending, telephony data, call lo
 
 ## Media status
 
-The underlying message model already supports `Image`, `Audio`, `Video`, and `Document` parts. Image-producing conversational models remain available inside normal chat instead of being forced into the standalone image picker. The speech subsystem already supports multiple TTS backends; the next integration stage persists generated speech as first-class `Audio` message attachments in addition to playback.
+The underlying message model supports `Image`, `Audio`, `Video`, and `Document` parts. Image-producing conversational models remain available inside normal chat instead of being forced into the standalone image picker.
+
+The `text_to_speech` agent tool now uses the user's selected TTS provider through the shared multi-provider speech subsystem, synthesizes a durable audio file under app-private storage, and returns it as a first-class `UIMessagePart.Audio` attachment together with a machine-readable text result. This keeps generated speech replayable from the conversation instead of limiting TTS to transient background playback.
+
+Provider-native media decoding remains capability-gated: AL Agent only requests or decodes audio, image, video, document, server-search, or code-execution features when the selected provider/model actually advertises or implements them. Generic TTS and document transformation remain fallbacks rather than pretending unsupported model-native features exist.
 
 ## Compatibility rule
 

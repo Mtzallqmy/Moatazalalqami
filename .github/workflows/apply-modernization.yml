@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/apply-modernization.py'
       - 'scripts/apply-product-updates.py'
+      - 'scripts/apply-capability-routing.py'
       - '.github/workflows/apply-modernization.yml'
 
 permissions:
@@ -23,6 +24,7 @@ jobs:
         run: |
           python3 scripts/apply-modernization.py
           python3 scripts/apply-product-updates.py
+          python3 scripts/apply-capability-routing.py
 
       - name: Commit patched source
         shell: bash

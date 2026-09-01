@@ -40,11 +40,6 @@ jobs:
         with:
           packages: platform-tools
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -85,17 +80,34 @@ jobs:
             llama-cpp/native/llama.cpp \
             "$LLAMA_CPP_SHA"
 
-      - name: Make Gradle executable
-        run: chmod +x gradlew
+      - name: Configure ephemeral CI release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -noprompt \
+            -keystore "$RUNNER_TEMP/ci-release.jks" \
+            -storepass ci-release-password \
+            -keypass ci-release-password \
+            -alias ci-release \
+            -keyalg RSA -keysize 3072 -validity 30 \
+            -dname "CN=Moataz Alaqami CI,O=CI,C=US"
+          {
+            echo "storeFile=$RUNNER_TEMP/ci-release.jks"
+            echo 'storePassword=ci-release-password'
+            echo 'keyAlias=ci-release'
+            echo 'keyPassword=ci-release-password'
+          } > local.properties
 
-      - name: Test and build arm64 debug APK
+      - name: Clean, test all modules, lint, and build signed arm64 release
         id: gradle_build
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         shell: bash
         run: |
-          set -o pipefail
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace --console=plain 2>&1 | tee gradle-build.log
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew clean test lintRelease :app:assembleRelease \
+            --stacktrace --console=plain 2>&1 | tee gradle-build.log
 
       - name: Summarize Gradle failure
         if: failure() && steps.gradle_build.outcome == 'failure'
@@ -117,25 +129,34 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Verify arm64 APK
+      - name: Verify signature, SDK floor, and arm64-only ABI
         if: success()
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
-          test -n "$APK"
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+          test -f "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-verify.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "sdkVersion:'26'" apk-badging.txt
           echo "APK=$APK"
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
           if unzip -l "$APK" | grep -Eq 'lib/(x86|x86_64|armeabi-v7a)/'; then
             echo 'Unexpected non-arm64 native libraries found in APK' >&2
             exit 1
           fi
+          sha256sum "$APK" | tee apk-sha256.txt
 
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: moataz-alaqami-arm64-debug
-          path: app/build/outputs/apk/**/*.apk
-          if-no-files-found: ignore
+          name: moataz-alaqami-arm64-release-ci
+          path: |
+            app/build/outputs/apk/release/*.apk
+            apksigner-verify.txt
+            apk-badging.txt
+            apk-sha256.txt
+          if-no-files-found: error
           retention-days: 14

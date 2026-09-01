@@ -48,7 +48,20 @@ class WorkspaceRepository(
                 }
                 continue
             }
+            try {
+                rootfsInstaller.recoverInterruptedInstall(workspace.root)
+            } catch (error: Throwable) {
+                Log.e(TAG, "Rootfs transaction recovery failed: id=${workspace.id}, root=${workspace.root}", error)
+                updateShellState(workspace.id, WorkspaceShellStatus.BROKEN.name)
+                continue
+            }
             val statusName = workspace.shellStatus
+            if (statusName == WorkspaceShellStatus.INSTALLING.name && manager.hasRootfs(workspace.root)) {
+                // Process death happened during activation/cleanup. Recovery above either kept the
+                // validated replacement or restored the known-good backup.
+                updateShellState(workspace.id, WorkspaceShellStatus.READY.name)
+                continue
+            }
             if ((statusName == WorkspaceShellStatus.READY.name || statusName == WorkspaceShellStatus.INSTALLING.name)
                 && !manager.hasRootfs(workspace.root)
             ) {
@@ -143,7 +156,8 @@ class WorkspaceRepository(
             throw CancellationException("Embedded rootfs install cancelled").also { it.initCause(e) }
         } catch (e: Throwable) {
             Log.e(TAG, "installEmbeddedRootfs failed: workspace=${workspace.id}", e)
-            updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
+            // Transactional installation leaves the previous rootfs untouched on failure.
+            restoreShellState(workspace)
             throw e
         } finally {
             archive.delete()
@@ -176,7 +190,8 @@ class WorkspaceRepository(
             throw CancellationException("Rootfs install cancelled").also { it.initCause(e) }
         } catch (e: Throwable) {
             Log.e(TAG, "installRootfs failed: workspace=${workspace.id}, root=${workspace.root}, url=$url", e)
-            updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
+            // Preserve the previous shell state: a validated old rootfs is still active.
+            restoreShellState(workspace)
             throw e
         }
     }

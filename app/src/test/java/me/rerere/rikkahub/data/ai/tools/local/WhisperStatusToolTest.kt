@@ -34,22 +34,15 @@ class WhisperStatusToolTest {
 
     @Test fun `PREFERRED_MODEL_NAME is ggml-tiny dot bin`() {
         // Regression guard: if someone renames the constant the shell scripts break.
-        // Access via the package-private const exposed for testing.
-        // Since the const is private to the file, we check the expected value string directly.
-        val expected = "ggml-tiny.bin"
-        // If this assertion ever fails, update the shell scripts in findWhisperModelViaShell
-        // and whisperStatusTool to use the new name.
-        assertEquals(expected, expected) // placeholder — real value checked via build
+        assertEquals("ggml-tiny.bin", PREFERRED_MODEL_NAME)
     }
 
     @Test fun `WHISPER_MODEL_SEARCH_PATHS contains the user-reported working path`() {
         // The user's model was at ~/.cache/whisper-models which maps to:
         val expectedPath = "/data/data/com.termux/files/home/.cache/whisper-models"
-        // This path must be in the search list or discovery will still fail for that location.
-        // We can't directly access the private val from here, but we document the requirement.
-        // If this test documents the path and a dev removes it from the list, CI won't catch
-        // it — but the on-device test plan in TranscribeAudioToolValidationTest covers it.
-        assert(expectedPath.contains("whisper-models")) { "expected path must contain whisper-models" }
+        assert(WHISPER_MODEL_SEARCH_PATHS.contains(expectedPath)) {
+            "search paths must include the standard Termux whisper model cache"
+        }
     }
 
     // ---------------------------------------------------------------------------

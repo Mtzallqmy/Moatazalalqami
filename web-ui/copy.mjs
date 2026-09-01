@@ -10,7 +10,7 @@ import { join, dirname } from "node:path";
 const SOURCE_DIR = "./build/client";
 const TARGET_DIR = "../web/src/main/resources/static";
 
-function copyDirectory(src: string, dest: string) {
+function copyDirectory(src, dest) {
   // 确保目标目录存在
   mkdirSync(dest, { recursive: true });
 

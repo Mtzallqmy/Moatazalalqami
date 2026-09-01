@@ -30,11 +30,6 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -96,24 +91,29 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
-      - name: Test and build signed arm64 APK and AAB
+      - name: Clean, test all modules, lint, and build signed arm64 APK and AAB
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease --stacktrace --console=plain
+          ./gradlew clean test lintRelease :app:assembleRelease :app:bundleRelease --stacktrace --console=plain
 
-      - name: Verify release APK ABI
+      - name: Verify release signature, SDK floor, and ABI
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
-          test -n "$APK"
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+          test -f "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-verify.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "sdkVersion:'26'" apk-badging.txt
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
           if unzip -l "$APK" | grep -Eq 'lib/(x86|x86_64|armeabi-v7a)/'; then
             echo 'Unexpected non-arm64 native libraries found in release APK' >&2
             exit 1
           fi
+          sha256sum "$APK" | tee apk-sha256.txt
 
       - name: Upload signed release artifacts
         uses: actions/upload-artifact@v4
@@ -122,6 +122,9 @@ jobs:
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
+            apksigner-verify.txt
+            apk-badging.txt
+            apk-sha256.txt
           if-no-files-found: error
           retention-days: 30
 

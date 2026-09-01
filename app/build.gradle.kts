@@ -1,7 +1,6 @@
 import com.android.build.api.dsl.Packaging
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import java.io.FileInputStream
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Properties
@@ -12,6 +11,22 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
+
+val releaseSigningProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.isFile) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+fun releaseSigningValue(propertyName: String, environmentName: String): String? =
+    releaseSigningProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(environmentName)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFilePath = releaseSigningValue("storeFile", "ANDROID_KEYSTORE_FILE")
+val releaseStorePassword = releaseSigningValue("storePassword", "ANDROID_STORE_PASSWORD")
+val releaseKeyAlias = releaseSigningValue("keyAlias", "ANDROID_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningValue("keyPassword", "ANDROID_KEY_PASSWORD")
 
 android {
     namespace = "me.rerere.rikkahub"
@@ -34,35 +49,13 @@ android {
 
     signingConfigs {
         create("release") {
-            val localProperties = Properties()
-            val localPropertiesFile = rootProject.file("local.properties")
-
-            if (localPropertiesFile.exists()) {
-                localProperties.load(FileInputStream(localPropertiesFile))
-
-                val storeFilePath = localProperties.getProperty("storeFile")
-                val storePasswordValue = localProperties.getProperty("storePassword")
-                val keyAliasValue = localProperties.getProperty("keyAlias")
-                val keyPasswordValue = localProperties.getProperty("keyPassword")
-
-                if (storeFilePath != null && storePasswordValue != null &&
-                    keyAliasValue != null && keyPasswordValue != null
-                ) {
-                    storeFile = file(storeFilePath)
-                    storePassword = storePasswordValue
-                    keyAlias = keyAliasValue
-                    keyPassword = keyPasswordValue
-                } else {
-                    val missing = buildList {
-                        if (storeFilePath == null) add("storeFile")
-                        if (storePasswordValue == null) add("storePassword")
-                        if (keyAliasValue == null) add("keyAlias")
-                        if (keyPasswordValue == null) add("keyPassword")
-                    }
-                    logger.warn("Signing config: local.properties is missing $missing, release build will be unsigned")
-                }
-            } else {
-                logger.warn("Signing config: local.properties not found, release build will be unsigned")
+            if (releaseStoreFilePath != null && releaseStorePassword != null &&
+                releaseKeyAlias != null && releaseKeyPassword != null
+            ) {
+                storeFile = rootProject.file(releaseStoreFilePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -106,6 +99,10 @@ android {
         }
     }
     lint {
+        // Keep the release gate strict for new findings while the inherited localization
+        // and Compose-style debt is reduced incrementally. Runtime/API/permission findings
+        // discovered during this production hardening pass are fixed in source, not baselined.
+        baseline = file("lint-baseline.xml")
         disable.add("FullBackupContent")
     }
     tasks.withType<KotlinCompile>().configureEach {
@@ -169,10 +166,39 @@ val prepareEmbeddedLinuxRootfs by tasks.registering {
 android.sourceSets.getByName("main").assets.directories.add(embeddedLinuxDir.get().asFile.absolutePath)
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
     .configureEach { dependsOn(prepareEmbeddedLinuxRootfs) }
+// AGP's lint model reads every declared asset directory directly instead of going
+// through merge*Assets, so it also needs the producer edge for Gradle 9 validation.
+tasks.matching { it.name.contains("Lint", ignoreCase = true) }
+    .configureEach { dependsOn(prepareEmbeddedLinuxRootfs) }
 
 tasks.register("buildAll") {
     dependsOn("assembleRelease", "bundleRelease")
     description = "Build both APK and AAB"
+}
+
+val verifyReleaseSigning by tasks.registering {
+    group = "verification"
+    description = "Fail fast when a release would be unsigned or use a missing keystore."
+    doLast {
+        val missing = buildList {
+            if (releaseStoreFilePath == null) add("storeFile/ANDROID_KEYSTORE_FILE")
+            if (releaseStorePassword == null) add("storePassword/ANDROID_STORE_PASSWORD")
+            if (releaseKeyAlias == null) add("keyAlias/ANDROID_KEY_ALIAS")
+            if (releaseKeyPassword == null) add("keyPassword/ANDROID_KEY_PASSWORD")
+        }
+        require(missing.isEmpty()) {
+            "Release signing is mandatory. Missing: ${missing.joinToString()}"
+        }
+        require(rootProject.file(requireNotNull(releaseStoreFilePath)).isFile) {
+            "Release keystore does not exist: $releaseStoreFilePath"
+        }
+    }
+}
+
+tasks.matching {
+    it.name == "assembleRelease" || it.name == "bundleRelease" || it.name == "packageRelease"
+}.configureEach {
+    dependsOn(verifyReleaseSigning)
 }
 
 ksp {

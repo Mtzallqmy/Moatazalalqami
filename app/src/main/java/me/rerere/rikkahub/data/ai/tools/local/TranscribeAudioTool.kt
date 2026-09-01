@@ -18,7 +18,7 @@ import java.io.File
 
 // Whisper model paths that whisper-cli checks by default, in preference order.
 // The first path that contains a .bin file wins. The user only needs one model.
-private val WHISPER_MODEL_SEARCH_PATHS = listOf(
+internal val WHISPER_MODEL_SEARCH_PATHS = listOf(
     // Standard Termux whisper.cpp package default
     "/data/data/com.termux/files/home/.cache/whisper-models",
     // Common alternate location used by manual builds
@@ -46,7 +46,7 @@ private val WHISPER_CLI_CANDIDATES = listOf(
 )
 
 // The preferred model. tiny is the smallest (75 MB) and works offline.
-private const val PREFERRED_MODEL_NAME = "ggml-tiny.bin"
+internal const val PREFERRED_MODEL_NAME = "ggml-tiny.bin"
 
 /**
  * LLM-callable audio transcription tool. Delegates to whisper.cpp's `whisper-cli`

@@ -139,7 +139,7 @@ class WorkspaceRepository(
         val archive = File(manager.tempDir(workspace.root), "embedded-linux-rootfs.tar.gz")
         return try {
             withContext(Dispatchers.IO) {
-                context.assets.open("linux-rootfs.tar.gz").use { input ->
+                context.assets.open("linux-rootfs.tar.gz.bin").use { input ->
                     archive.outputStream().use { output -> input.copyTo(output) }
                 }
             }

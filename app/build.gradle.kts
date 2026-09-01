@@ -136,7 +136,10 @@ val prepareEmbeddedLinuxRootfs by tasks.registering {
         val dir = outDir.get().asFile.apply { mkdirs() }
         val archiveName = "alpine-minirootfs-$alpineVersion-aarch64.tar.gz"
         val base = "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64"
-        val archive = File(dir, "linux-rootfs.tar.gz")
+        // aapt treats .gz as a packaging directive and strips that suffix from the asset
+        // path. Keep the gzip bytes under a neutral name so Assets.open() is deterministic.
+        val archive = File(dir, "linux-rootfs.tar.gz.bin")
+        File(dir, "linux-rootfs.tar.gz").delete()
         val checksum = File(dir, "$archiveName.sha256")
         if (!archive.exists()) {
             URI("$base/$archiveName").toURL().openStream().use { input ->

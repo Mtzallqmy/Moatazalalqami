@@ -383,6 +383,9 @@ fun termuxSessionStartTool(context: Context): Tool = Tool(
         val initial = input.jsonObject["command"]?.jsonPrimitive?.contentOrNull
         if (!initial.isNullOrBlank()) {
             HardlineCommandGuard.checkCommand(initial)?.let {
+                tmux(context, TmuxOps.killArgv(name))
+                TerminalEventBus.publish(TerminalEvent.SessionStopped(name))
+                TerminalEventBus.forget(name)
                 return@Tool sessionErrorEnvelope("blocked_by_safety_floor", it)
             }
             tmux(context, TmuxOps.sendTextArgv(name, initial))
@@ -458,7 +461,10 @@ fun termuxSessionSendTool(context: Context): Tool = Tool(
         }
         val r = read as? CaptureResult.Success
             ?: return@Tool sessionErrorEnvelope("read_failed", "Input was sent, but the screen read failed. Use termux_session_read to see the result.")
-        TerminalEventBus.publish(TerminalEvent.CommandFinished(session, null))
+        // A tmux shell remains alive after a command settles and may be waiting for more
+        // interactive input. Do not mark the shared session as stopped merely because this
+        // individual capture loop completed.
+        TerminalEventBus.publish(TerminalEvent.WaitingForInput(session, waitFor))
         listOf(UIMessagePart.Text(buildJsonObject {
             put("success", true)
             put("screen", truncateOut(r.stdout))

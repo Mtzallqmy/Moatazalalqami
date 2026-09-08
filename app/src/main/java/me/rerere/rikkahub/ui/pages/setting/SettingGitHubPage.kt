@@ -82,8 +82,8 @@ fun SettingGitHubPage() {
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = padding.calculateTopPadding() + 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Text(
-                    if (status == R.string.github_status_connected && username != null) {
-                        stringResource(status, username!!)
+                    if (status == R.string.github_status_connected) {
+                        stringResource(status, username.orEmpty())
                     } else stringResource(status),
                 )
             }

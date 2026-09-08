@@ -59,7 +59,6 @@ fun githubRepositoryTools(client: GitHubApiClient, preferences: GitHubPreference
         execute = { input -> executeGithub(name, endpoint, client, preferences, input) },
     )
 }
-
 private suspend fun executeGithub(name: String, endpoint: Endpoint, client: GitHubApiClient, prefs: GitHubPreferences, input: JsonElement): List<UIMessagePart> {
     val obj = input.jsonObject
     val repo = obj["repository"]?.jsonPrimitive?.contentOrNull.orEmpty()
@@ -79,4 +78,3 @@ private suspend fun executeGithub(name: String, endpoint: Endpoint, client: GitH
 private fun errorPart(message: String) = listOf(UIMessagePart.Text(buildJsonObject { put("error", message) }.toString()))
 private fun encodePath(value: String): String = value.split('/').joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
 private fun number(value: String): Long = value.toLongOrNull()?.takeIf { it > 0 } ?: error("positive numeric id required")
-

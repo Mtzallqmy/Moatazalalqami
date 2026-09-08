@@ -27,4 +27,3 @@ class GitHubPreferences(context: Context) {
         }
     }
 }
-

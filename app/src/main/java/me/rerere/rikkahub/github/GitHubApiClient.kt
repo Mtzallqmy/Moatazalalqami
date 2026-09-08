@@ -32,4 +32,3 @@ class GitHubApiClient(private val http: OkHttpClient, private val vault: Credent
 
     companion object { private val JSON = "application/json; charset=utf-8".toMediaType() }
 }
-

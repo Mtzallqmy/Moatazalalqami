@@ -11,4 +11,3 @@ class GitHubPreferencesTest {
         GitHubPreferences.normalizeRepository("https://github.com/owner/repo")
     }
 }
-

@@ -63,6 +63,10 @@ val appModule = module {
         me.rerere.rikkahub.data.telegram.TelegramInteractiveToolStreamer(get(), get(), get(), get())
     }
     single { me.rerere.rikkahub.data.preferences.ToolApprovalPreferences(get()) }
+    single<me.rerere.rikkahub.security.CredentialVault> { me.rerere.rikkahub.security.AndroidCredentialVault(get()) }
+    single { me.rerere.rikkahub.github.GitHubPreferences(get()) }
+    single { me.rerere.rikkahub.github.GitHubApiClient(get(), get()) }
+    single { me.rerere.rikkahub.security.AgentKillSwitch(get()) }
     single {
         TelegramBotClient(
             tokenProvider = { runCatching { kotlinx.coroutines.runBlocking { get<TelegramBotPreferences>().current().token } }.getOrDefault("") },
@@ -203,6 +207,9 @@ val appModule = module {
             storageVolumeGrantStore = get(),
             okHttpClient = get(),
             keyboardApiClient = get(),
+            gitHubApiClient = get(),
+            gitHubPreferences = get(),
+            agentKillSwitch = get(),
         )
     }
 

@@ -557,6 +557,10 @@ class RouteActivity : ComponentActivity() {
                                 me.rerere.rikkahub.ui.pages.setting.termux.SettingTermuxPage()
                             }
 
+                            entry<Screen.SettingGitHub> {
+                                me.rerere.rikkahub.ui.pages.setting.SettingGitHubPage()
+                            }
+
                             entry<Screen.SettingShizuku> {
                                 me.rerere.rikkahub.ui.pages.setting.shizuku.SettingShizukuPage()
                             }
@@ -832,6 +836,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingTermux : Screen
+
+    @Serializable
+    data object SettingGitHub : Screen
 
     @Serializable
     data object SettingShizuku : Screen

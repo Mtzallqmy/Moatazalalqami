@@ -206,6 +206,7 @@ sealed class LocalToolOption {
     @Serializable @SerialName("external_storage")     data object ExternalStorage     : LocalToolOption()
     @Serializable @SerialName("archive")              data object Archive             : LocalToolOption()
     @Serializable @SerialName("keyboard_control")     data object KeyboardControl     : LocalToolOption()
+    @Serializable @SerialName("github")               data object GitHub              : LocalToolOption()
 }
 
 /**
@@ -378,6 +379,9 @@ class LocalTools(
     private val okHttpClient: okhttp3.OkHttpClient,
     // agent-keyboard IPC client — backs the keyboard_* tools (drives the active text field).
     private val keyboardApiClient: me.rerere.rikkahub.data.keyboard.KeyboardApiClient,
+    private val gitHubApiClient: me.rerere.rikkahub.github.GitHubApiClient,
+    private val gitHubPreferences: me.rerere.rikkahub.github.GitHubPreferences,
+    private val agentKillSwitch: me.rerere.rikkahub.security.AgentKillSwitch,
 ) {
     val javascriptTool by lazy {
         Tool(
@@ -1096,14 +1100,35 @@ class LocalTools(
             tools.add(keyboardSetCursorTool(keyboardApiClient))
             tools.add(keyboardSelectRangeTool(keyboardApiClient))
         }
+        if (options.contains(LocalToolOption.GitHub)) {
+            tools.addAll(me.rerere.rikkahub.github.githubRepositoryTools(gitHubApiClient, gitHubPreferences))
+        }
         // Centralised opt-in to needsApproval. Tool factories themselves don't have to know
         // whether their op is destructive — ToolApprovalDefaults is the single source of
         // truth, and the GenerationHandler / Telegram/in-app prompt path keys off needsApproval.
         return tools.map { t ->
-            val withApproval = if (ToolApprovalDefaults.requiresApproval(t.name)) {
-                t.copy(needsApproval = { true })
+            val secured = if (t.name.startsWith("github_")) {
+                t.copy(execute = { input ->
+                    val metadata = checkNotNull(ToolSecurityRegistry.metadata(t.name)) {
+                        "GitHub tool has no security metadata: ${t.name}"
+                    }
+                    val capabilities = if (invocationContext.isHeadless) emptySet() else metadata.requiredCapabilities
+                    check(ToolSecurityRegistry.permits(t.name, invocationContext.isHeadless, capabilities)) {
+                        "Tool denied by execution policy: ${t.name}"
+                    }
+                    if (metadata.sideEffect != SideEffect.NONE) agentKillSwitch.requireWritesAllowed()
+                    t.execute(input)
+                })
+            } else if (invocationContext.isHeadless) {
+                t.copy(execute = { input ->
+                    agentKillSwitch.requireBackgroundAllowed()
+                    t.execute(input)
+                })
+            } else t
+            val withApproval = if (ToolApprovalDefaults.requiresApproval(secured.name)) {
+                secured.copy(needsApproval = { true })
             } else {
-                t
+                secured
             }
             addHumanErrorEnvelopes(appendTopToolExample(withApproval))
         }

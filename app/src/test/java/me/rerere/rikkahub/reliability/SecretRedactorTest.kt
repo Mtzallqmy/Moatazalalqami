@@ -68,4 +68,13 @@ class SecretRedactorTest {
         // by any pattern.
         assertTrue(twice.contains("[redacted]"))
     }
+
+    @Test fun `GitHub PAT and registered secret are redacted`() {
+        val pat = "github_pat_11AA22BB33CC44DD55EE66FF77"
+        SecretRedactor.registerKnownSecret("private-value-not-a-pattern".toCharArray())
+        val out = SecretRedactor.redact("$pat private-value-not-a-pattern")
+        assertFalse(out.contains(pat))
+        assertFalse(out.contains("private-value-not-a-pattern"))
+        assertTrue(SecretRedactor.fingerprints().isNotEmpty())
+    }
 }

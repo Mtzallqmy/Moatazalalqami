@@ -30,6 +30,7 @@ val DEFAULT_AGENT_LOCAL_TOOLS: List<LocalToolOption> = listOf(
     LocalToolOption.SubAgents,
     LocalToolOption.Workflows,
     LocalToolOption.CostGuards,
+    LocalToolOption.GitHub,
 )
 
 @Serializable

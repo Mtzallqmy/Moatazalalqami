@@ -36,8 +36,8 @@ android {
         applicationId = "com.moatazalaqami.agent"
         minSdk = 26
         targetSdk = 37
-        versionCode = 30000
-        versionName = "3.0.0"
+        versionCode = 30100
+        versionName = "3.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -128,6 +128,8 @@ composeCompiler {
 // Moataz Alaqami 3.0: embed an aarch64 Alpine Linux minirootfs in every APK.
 // Download happens only at build time. The installed app never needs to fetch a rootfs.
 val alpineVersion = "3.24.1"
+// Pinned independently in source; do not trust a checksum downloaded beside the payload.
+val alpineAarch64Sha256 = "f55a90f69052c5bd6f92cb09a8f47065970830b194c917a006fb94028e721259"
 val embeddedLinuxDir = layout.buildDirectory.dir("generated/moatazLinux")
 val prepareEmbeddedLinuxRootfs by tasks.registering {
     val outDir = embeddedLinuxDir
@@ -140,16 +142,12 @@ val prepareEmbeddedLinuxRootfs by tasks.registering {
         // path. Keep the gzip bytes under a neutral name so Assets.open() is deterministic.
         val archive = File(dir, "linux-rootfs.tar.gz.bin")
         File(dir, "linux-rootfs.tar.gz").delete()
-        val checksum = File(dir, "$archiveName.sha256")
         if (!archive.exists()) {
             URI("$base/$archiveName").toURL().openStream().use { input ->
                 archive.outputStream().use { output -> input.copyTo(output) }
             }
         }
-        URI("$base/$archiveName.sha256").toURL().openStream().use { input ->
-            checksum.outputStream().use { output -> input.copyTo(output) }
-        }
-        val expected = checksum.readText().trim().substringBefore(' ')
+        val expected = alpineAarch64Sha256
         val digest = MessageDigest.getInstance("SHA-256")
         val actual = archive.inputStream().use { stream ->
             val buf = ByteArray(1024 * 128)

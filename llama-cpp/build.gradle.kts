@@ -11,10 +11,9 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Moataz Alaqami ships a single production ABI. Keeping every native
-        // module aligned prevents unnecessary x86 builds and mixed-ABI APKs.
+        // Keep x86_64 available to the debug test APK used by API 26 CI.
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
 
         externalNativeBuild {
@@ -34,6 +33,15 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+        }
+    }
+
+    buildTypes {
+        release {
+            ndk {
+                abiFilters.clear()
+                abiFilters += "arm64-v8a"
+            }
         }
     }
 

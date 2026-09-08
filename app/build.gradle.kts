@@ -42,7 +42,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            // x86_64 exists only so API 26 instrumentation can run with hardware acceleration.
+            // The release build type below resets this set to the production ARM64 ABI.
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
 
@@ -62,6 +64,10 @@ android {
 
     buildTypes {
         release {
+            ndk {
+                abiFilters.clear()
+                abiFilters += "arm64-v8a"
+            }
             signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = true

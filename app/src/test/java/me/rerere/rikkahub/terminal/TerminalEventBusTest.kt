@@ -9,7 +9,9 @@ class TerminalEventBusTest {
     @Test fun transcriptIsBounded() {
         val id = "test-terminal-${System.nanoTime()}"
         TerminalEventBus.publish(TerminalEvent.SessionStarted(id, "test", "/workspace"))
-        TerminalEventBus.publish(TerminalEvent.Stdout(id, "x".repeat(140 * 1024)))
+        // Keep the sample larger than the transcript limit without looking like one giant
+        // base64 token, which the central secret redactor intentionally replaces first.
+        TerminalEventBus.publish(TerminalEvent.Stdout(id, "terminal output!\\n".repeat(10_000)))
         val state = requireNotNull(TerminalEventBus.sessions.value[id])
         assertTrue(state.screen.length < 140 * 1024)
         assertTrue(state.screen.contains("truncated"))

@@ -22,6 +22,7 @@ class AssistantDefaultsTest {
             LocalToolOption.SubAgents,
             LocalToolOption.Workflows,
             LocalToolOption.CostGuards,
+            LocalToolOption.GitHub,
         )
 
         assertEquals(required, DEFAULT_AGENT_LOCAL_TOOLS.toSet())

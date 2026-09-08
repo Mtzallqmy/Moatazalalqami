@@ -20,6 +20,9 @@ import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import me.rerere.workspace.WorkspaceTreeResult
+import me.rerere.workspace.git.GitCommandResult
+import me.rerere.workspace.git.GitOperation
+import me.rerere.workspace.git.GitRepositoryManager
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -33,6 +36,7 @@ class WorkspaceRepository(
     private val settingsStore: SettingsStore,
     private val context: android.content.Context,
 ) {
+    private val git = GitRepositoryManager(manager)
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
     suspend fun checkIntegrity() = withContext(Dispatchers.IO) {
@@ -74,6 +78,12 @@ class WorkspaceRepository(
     suspend fun getById(id: String): WorkspaceEntity? = dao.getById(id)
 
     suspend fun getAll(): List<WorkspaceEntity> = withContext(Dispatchers.IO) { dao.getAll() }
+
+    suspend fun executeGit(id: String, operation: GitOperation, args: List<String>, approved: Boolean): GitCommandResult =
+        withContext(Dispatchers.IO) {
+            val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+            git.execute(workspace.root, operation, args, approved)
+        }
 
     suspend fun create(name: String): WorkspaceEntity {
         val id = Uuid.random().toString()

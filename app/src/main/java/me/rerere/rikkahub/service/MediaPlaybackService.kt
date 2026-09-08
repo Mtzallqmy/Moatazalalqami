@@ -222,20 +222,17 @@ class MediaPlaybackService : Service() {
         var resolvedArtist = artist
         var resolvedAlbum = album
         if (resolvedTitle == null || resolvedArtist == null || resolvedAlbum == null) {
-            val retriever = MediaMetadataRetriever()
             try {
-                retriever.setDataSource(source)
-                if (resolvedTitle == null)
-                    resolvedTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
-                if (resolvedArtist == null)
-                    resolvedArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
-                if (resolvedAlbum == null)
-                    resolvedAlbum = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
-            } catch (t: Throwable) {
-                Log.d(TAG, "metadata extraction failed (best-effort)", t)
-            } finally {
-                retriever.release()
-            }
+                MediaMetadataRetriever().use { retriever ->
+                    retriever.setDataSource(source)
+                    if (resolvedTitle == null)
+                        resolvedTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                    if (resolvedArtist == null)
+                        resolvedArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    if (resolvedAlbum == null)
+                        resolvedAlbum = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                }
+            } catch (t: Throwable) { Log.d(TAG, "metadata extraction failed (best-effort)", t) }
         }
 
         currentTitle = resolvedTitle

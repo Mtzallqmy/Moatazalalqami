@@ -16,6 +16,7 @@ import me.rerere.rikkahub.data.telegram.TelegramBotClient
 import me.rerere.rikkahub.data.telegram.TelegramBotPreferences
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.service.CronJobScheduler
+import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager
 import me.rerere.rikkahub.utils.EmojiData
 import me.rerere.rikkahub.utils.EmojiUtils
 import me.rerere.rikkahub.utils.JsonInstant
@@ -63,10 +64,6 @@ val appModule = module {
         me.rerere.rikkahub.data.telegram.TelegramInteractiveToolStreamer(get(), get(), get(), get())
     }
     single { me.rerere.rikkahub.data.preferences.ToolApprovalPreferences(get()) }
-    single<me.rerere.rikkahub.security.CredentialVault> { me.rerere.rikkahub.security.AndroidCredentialVault(get()) }
-    single { me.rerere.rikkahub.github.GitHubPreferences(get()) }
-    single { me.rerere.rikkahub.github.GitHubApiClient(get(), get()) }
-    single { me.rerere.rikkahub.security.AgentKillSwitch(get()) }
     single {
         TelegramBotClient(
             tokenProvider = { runCatching { kotlinx.coroutines.runBlocking { get<TelegramBotPreferences>().current().token } }.getOrDefault("") },
@@ -181,7 +178,6 @@ val appModule = module {
             scheduledJobRunRepository = get(),
             cronJobScheduler = get(),
             settingsStore = get(),
-            ttsManager = get(),
             sshHostRepository = get(),
             telegramBotPreferences = get(),
             telegramBotClient = get(),
@@ -207,14 +203,14 @@ val appModule = module {
             storageVolumeGrantStore = get(),
             okHttpClient = get(),
             keyboardApiClient = get(),
-            gitHubApiClient = get(),
-            gitHubPreferences = get(),
-            agentKillSwitch = get(),
         )
     }
 
     single {
-        UpdateChecker(get())
+        UpdateChecker(
+            client = get(),
+            appScope = get(),
+        )
     }
 
     single {
@@ -237,6 +233,10 @@ val appModule = module {
         AILoggingManager(get(), get())
     }
 
+    single {
+        WorkspaceTerminalSessionManager(get(), get())
+    }
+
     // Phase 22A: Local-LLM on-device providers
     single { me.rerere.locallm.LocalRuntimePreferences(get()) }
     single { me.rerere.locallm.litert.LiteRtRuntime(get()) }
@@ -251,6 +251,7 @@ val appModule = module {
             conversationRepo = get(),
             memoryRepository = get(),
             generationHandler = get(),
+            translationHandler = get(),
             templateTransformer = get(),
             providerManager = get(),
             localTools = get(),

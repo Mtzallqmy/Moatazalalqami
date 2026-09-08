@@ -2,14 +2,10 @@ package me.rerere.rikkahub.data.agentrun
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.content.Context
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 
 private const val TAG = "AgentRunBootRecovery"
 
@@ -107,15 +103,7 @@ class AgentRunBootRecovery(
                     .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setAutoCancel(true)
-                val canNotify = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.POST_NOTIFICATIONS,
-                    ) == PackageManager.PERMISSION_GRANTED
-                if (canNotify) {
-                    NotificationManagerCompat.from(context)
-                        .notify(AGGREGATE_NOTIF_ID, builder.build())
-                }
+                NotificationManagerCompat.from(context).notify(AGGREGATE_NOTIF_ID, builder.build())
             }.onFailure {
                 // POST_NOTIFICATIONS not granted, or notifications restricted — non-fatal.
                 logSafe { Log.w(TAG, "postAggregateNotification failed", it) }

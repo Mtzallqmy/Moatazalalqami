@@ -20,11 +20,7 @@ import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import me.rerere.workspace.WorkspaceTreeResult
-import me.rerere.workspace.git.GitCommandResult
-import me.rerere.workspace.git.GitOperation
-import me.rerere.workspace.git.GitRepositoryManager
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import kotlin.uuid.Uuid
@@ -36,7 +32,6 @@ class WorkspaceRepository(
     private val settingsStore: SettingsStore,
     private val context: android.content.Context,
 ) {
-    private val git = GitRepositoryManager(manager)
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
     suspend fun checkIntegrity() = withContext(Dispatchers.IO) {
@@ -52,20 +47,7 @@ class WorkspaceRepository(
                 }
                 continue
             }
-            try {
-                rootfsInstaller.recoverInterruptedInstall(workspace.root)
-            } catch (error: Throwable) {
-                Log.e(TAG, "Rootfs transaction recovery failed: id=${workspace.id}, root=${workspace.root}", error)
-                updateShellState(workspace.id, WorkspaceShellStatus.BROKEN.name)
-                continue
-            }
             val statusName = workspace.shellStatus
-            if (statusName == WorkspaceShellStatus.INSTALLING.name && manager.hasRootfs(workspace.root)) {
-                // Process death happened during activation/cleanup. Recovery above either kept the
-                // validated replacement or restored the known-good backup.
-                updateShellState(workspace.id, WorkspaceShellStatus.READY.name)
-                continue
-            }
             if ((statusName == WorkspaceShellStatus.READY.name || statusName == WorkspaceShellStatus.INSTALLING.name)
                 && !manager.hasRootfs(workspace.root)
             ) {
@@ -78,12 +60,6 @@ class WorkspaceRepository(
     suspend fun getById(id: String): WorkspaceEntity? = dao.getById(id)
 
     suspend fun getAll(): List<WorkspaceEntity> = withContext(Dispatchers.IO) { dao.getAll() }
-
-    suspend fun executeGit(id: String, operation: GitOperation, args: List<String>, approved: Boolean): GitCommandResult =
-        withContext(Dispatchers.IO) {
-            val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-            git.execute(workspace.root, operation, args, approved)
-        }
 
     suspend fun create(name: String): WorkspaceEntity {
         val id = Uuid.random().toString()
@@ -149,7 +125,7 @@ class WorkspaceRepository(
         val archive = File(manager.tempDir(workspace.root), "embedded-linux-rootfs.tar.gz")
         return try {
             withContext(Dispatchers.IO) {
-                context.assets.open("linux-rootfs.tar.gz.bin").use { input ->
+                context.assets.open("linux-rootfs.tar.gz").use { input ->
                     archive.outputStream().use { output -> input.copyTo(output) }
                 }
             }
@@ -166,8 +142,7 @@ class WorkspaceRepository(
             throw CancellationException("Embedded rootfs install cancelled").also { it.initCause(e) }
         } catch (e: Throwable) {
             Log.e(TAG, "installEmbeddedRootfs failed: workspace=${workspace.id}", e)
-            // Transactional installation leaves the previous rootfs untouched on failure.
-            restoreShellState(workspace)
+            updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
             throw e
         } finally {
             archive.delete()
@@ -200,8 +175,7 @@ class WorkspaceRepository(
             throw CancellationException("Rootfs install cancelled").also { it.initCause(e) }
         } catch (e: Throwable) {
             Log.e(TAG, "installRootfs failed: workspace=${workspace.id}, root=${workspace.root}, url=$url", e)
-            // Preserve the previous shell state: a validated old rootfs is still active.
-            restoreShellState(workspace)
+            updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
             throw e
         }
     }

@@ -42,6 +42,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -158,7 +160,8 @@ fun ChatDrawerContent(
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderToRename by remember { mutableStateOf<Folder?>(null) }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
-    var conversationToRename by remember { mutableStateOf<Conversation?>(null) }
+    // 与顶部标题点击共享，见 ChatDrawerVM.conversationToRename
+    val conversationToRename by drawerVm.conversationToRename.collectAsStateWithLifecycle()
 
     // Menu popup 状态
     var showMenuPopup by remember { mutableStateOf(false) }
@@ -275,7 +278,7 @@ fun ChatDrawerContent(
                     navigateToChatPage(navController, it.id)
                 },
                 onRename = {
-                    conversationToRename = it
+                    drawerVm.requestRenameConversation(it)
                 },
                 onDelete = {
                     scope.launch {
@@ -332,31 +335,18 @@ fun ChatDrawerContent(
                     .padding(horizontal = 8.dp)
             ) {
                 DrawerAction(
-                    icon = {
-                        Icon(
-                            imageVector = HugeIcons.LookTop,
-                            contentDescription = stringResource(R.string.assistant_page_title)
-                        )
-                    },
-                    label = {
-                        Text(stringResource(R.string.assistant_page_title))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Assistant)
-                    },
+                    icon = { Icon(HugeIcons.LookTop, null) },
+                    label = { Text(stringResource(R.string.assistant_page_title)) },
+                    contentDescription = stringResource(R.string.assistant_page_title),
+                    onClick = { navController.navigate(Screen.Assistant) },
                 )
 
                 Box {
                     DrawerAction(
-                        icon = {
-                            Icon(HugeIcons.Sparkles, stringResource(R.string.menu))
-                        },
-                        label = {
-                            Text(stringResource(R.string.menu))
-                        },
-                        onClick = {
-                            showMenuPopup = true
-                        },
+                        icon = { Icon(HugeIcons.Sparkles, null) },
+                        label = { Text(stringResource(R.string.menu)) },
+                        contentDescription = stringResource(R.string.menu),
+                        onClick = { showMenuPopup = true },
                     )
                     DropdownMenu(
                         expanded = showMenuPopup,
@@ -382,39 +372,26 @@ fun ChatDrawerContent(
                 }
 
                 DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.InLove, stringResource(R.string.favorite_page_title))
-                    },
-                    label = {
-                        Text(stringResource(R.string.favorite_page_title))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Favorite)
-                    },
+                    icon = { Icon(HugeIcons.InLove, null) },
+                    label = { Text(stringResource(R.string.favorite_page_title)) },
+                    contentDescription = stringResource(R.string.favorite_page_title),
+                    onClick = { navController.navigate(Screen.Favorite) },
                 )
 
                 DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.ChartColumn, stringResource(R.string.chat_drawer_statistics))
-                    },
-                    label = {
-                        Text(stringResource(R.string.chat_drawer_statistics))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Stats)
-                    },
+                    icon = { Icon(HugeIcons.ChartColumn, null) },
+                    label = { Text(stringResource(R.string.chat_drawer_statistics)) },
+                    contentDescription = stringResource(R.string.chat_drawer_statistics),
+                    onClick = { navController.navigate(Screen.Stats) },
                 )
 
                 Spacer(Modifier.weight(1f))
 
                 DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.Settings03, null)
-                    },
+                    icon = { Icon(HugeIcons.Settings03, null) },
                     label = { Text(stringResource(R.string.settings)) },
-                    onClick = {
-                        navController.navigate(Screen.Setting)
-                    },
+                    contentDescription = stringResource(R.string.settings),
+                    onClick = { navController.navigate(Screen.Setting) },
                 )
             }
         }
@@ -619,11 +596,11 @@ fun ChatDrawerContent(
         )
     }
 
-    // 重命名会话对话框
+    // 重命名会话对话框（顶部标题点击与本抽屉的 Rename 菜单项共享同一个目标状态）
     conversationToRename?.let { conversation ->
         var title by remember(conversation.id) { mutableStateOf(conversation.title) }
         AlertDialog(
-            onDismissRequest = { conversationToRename = null },
+            onDismissRequest = { drawerVm.dismissRenameConversation() },
             title = { Text(stringResource(R.string.chat_page_rename_chat)) },
             text = {
                 Column(
@@ -638,7 +615,7 @@ fun ChatDrawerContent(
                     TextButton(
                         onClick = {
                             vm.generateTitle(conversation, true)
-                            conversationToRename = null
+                            drawerVm.dismissRenameConversation()
                         }
                     ) {
                         Text(stringResource(R.string.chat_page_regenerate_title))
@@ -649,13 +626,12 @@ fun ChatDrawerContent(
                 TextButton(
                     onClick = {
                         drawerVm.renameConversation(conversation.id, title)
-                        conversationToRename = null
                     },
                     enabled = title.isNotBlank()
                 ) { Text(stringResource(R.string.chat_page_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { conversationToRename = null }) {
+                TextButton(onClick = { drawerVm.dismissRenameConversation() }) {
                     Text(stringResource(R.string.chat_page_cancel))
                 }
             }
@@ -805,11 +781,16 @@ private fun DrawerAction(
     modifier: Modifier = Modifier,
     icon: @Composable () -> Unit,
     label: @Composable () -> Unit,
+    contentDescription: String? = null,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            if (contentDescription != null) {
+                this.contentDescription = contentDescription
+            }
+        },
         color = MaterialTheme.colorScheme.primaryContainer,
         shape = CircleShape,
         contentColor = MaterialTheme.colorScheme.onSurface,

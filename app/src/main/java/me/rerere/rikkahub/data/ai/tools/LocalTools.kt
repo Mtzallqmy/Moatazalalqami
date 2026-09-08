@@ -5,7 +5,6 @@ import com.whl.quickjs.wrapper.QuickJSContext
 import com.whl.quickjs.wrapper.QuickJSObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -126,7 +125,6 @@ import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.utils.readClipboardText
 import me.rerere.rikkahub.utils.writeClipboardText
-import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import java.time.ZonedDateTime
 import java.time.format.TextStyle
 import java.util.Locale
@@ -206,7 +204,6 @@ sealed class LocalToolOption {
     @Serializable @SerialName("external_storage")     data object ExternalStorage     : LocalToolOption()
     @Serializable @SerialName("archive")              data object Archive             : LocalToolOption()
     @Serializable @SerialName("keyboard_control")     data object KeyboardControl     : LocalToolOption()
-    @Serializable @SerialName("github")               data object GitHub              : LocalToolOption()
 }
 
 /**
@@ -339,7 +336,6 @@ class LocalTools(
     private val scheduledJobRunRepository: me.rerere.rikkahub.data.repository.ScheduledJobRunRepository,
     private val cronJobScheduler: me.rerere.rikkahub.service.CronJobScheduler,
     private val settingsStore: me.rerere.rikkahub.data.datastore.SettingsStore,
-    private val ttsManager: me.rerere.tts.provider.TTSManager,
     private val sshHostRepository: me.rerere.rikkahub.data.repository.SshHostRepository,
     private val telegramBotPreferences: me.rerere.rikkahub.data.telegram.TelegramBotPreferences,
     private val telegramBotClient: me.rerere.rikkahub.data.telegram.TelegramBotClient,
@@ -379,9 +375,6 @@ class LocalTools(
     private val okHttpClient: okhttp3.OkHttpClient,
     // agent-keyboard IPC client — backs the keyboard_* tools (drives the active text field).
     private val keyboardApiClient: me.rerere.rikkahub.data.keyboard.KeyboardApiClient,
-    private val gitHubApiClient: me.rerere.rikkahub.github.GitHubApiClient,
-    private val gitHubPreferences: me.rerere.rikkahub.github.GitHubPreferences,
-    private val agentKillSwitch: me.rerere.rikkahub.security.AgentKillSwitch,
 ) {
     val javascriptTool by lazy {
         Tool(
@@ -612,9 +605,9 @@ class LocalTools(
         Tool(
             name = "text_to_speech",
             description = """
-                Generate spoken audio from text using the user's selected TTS provider and attach the audio to the chat.
-                Use this when the user asks for speech, narration, a voice answer, or an audio version of content.
-                The generated audio remains available in the conversation for replay instead of being only transient playback.
+                Speak text aloud to the user using the device's text-to-speech engine.
+                Use this when the user asks you to read something aloud, or when audio output is appropriate.
+                The tool returns immediately; audio plays in the background on the device.
                 Provide natural, readable text without markdown formatting.
             """.trimIndent().replace("\n", " "),
             parameters = {
@@ -622,7 +615,7 @@ class LocalTools(
                     properties = buildJsonObject {
                         put("text", buildJsonObject {
                             put("type", "string")
-                            put("description", "The text to synthesize as speech")
+                            put("description", "The text to speak aloud")
                         })
                     },
                     required = listOf("text")
@@ -630,37 +623,12 @@ class LocalTools(
             },
             execute = {
                 val text = it.jsonObject["text"]?.jsonPrimitive?.contentOrNull
-                    ?.trim()
-                    ?.takeIf { value -> value.isNotBlank() }
                     ?: error("text is required")
-                val provider = settingsStore.settingsFlow.first().getSelectedTTSProvider()
-                    ?: error("No TTS provider selected")
-                val response = me.rerere.tts.controller.TtsSynthesizer(ttsManager).synthesize(
-                    setting = provider,
-                    chunk = me.rerere.tts.controller.TtsChunk(index = 0, text = text),
-                )
-                val extension = when (response.format) {
-                    me.rerere.tts.model.AudioFormat.MP3 -> "mp3"
-                    me.rerere.tts.model.AudioFormat.WAV -> "wav"
-                    me.rerere.tts.model.AudioFormat.OGG -> "ogg"
-                    me.rerere.tts.model.AudioFormat.AAC -> "aac"
-                    me.rerere.tts.model.AudioFormat.OPUS -> "opus"
-                    me.rerere.tts.model.AudioFormat.PCM -> "pcm"
-                }
-                val outputDir = java.io.File(context.filesDir, "generated_audio").apply { mkdirs() }
-                val audioFile = java.io.File(
-                    outputDir,
-                    "speech-${java.util.UUID.randomUUID()}.$extension",
-                ).apply { writeBytes(response.audioData) }
+                eventBus.emit(AppEvent.Speak(text))
                 val payload = buildJsonObject {
                     put("success", true)
-                    put("format", response.format.name.lowercase())
-                    put("audio_url", audioFile.toURI().toString())
                 }
-                listOf(
-                    UIMessagePart.Audio(url = audioFile.toURI().toString()),
-                    UIMessagePart.Text(payload.toString()),
-                )
+                listOf(UIMessagePart.Text(payload.toString()))
             }
         )
     }
@@ -1100,35 +1068,14 @@ class LocalTools(
             tools.add(keyboardSetCursorTool(keyboardApiClient))
             tools.add(keyboardSelectRangeTool(keyboardApiClient))
         }
-        if (options.contains(LocalToolOption.GitHub)) {
-            tools.addAll(me.rerere.rikkahub.github.githubRepositoryTools(gitHubApiClient, gitHubPreferences))
-        }
         // Centralised opt-in to needsApproval. Tool factories themselves don't have to know
         // whether their op is destructive — ToolApprovalDefaults is the single source of
         // truth, and the GenerationHandler / Telegram/in-app prompt path keys off needsApproval.
         return tools.map { t ->
-            val secured = if (t.name.startsWith("github_")) {
-                t.copy(execute = { input ->
-                    val metadata = checkNotNull(ToolSecurityRegistry.metadata(t.name)) {
-                        "GitHub tool has no security metadata: ${t.name}"
-                    }
-                    val capabilities = if (invocationContext.isHeadless) emptySet() else metadata.requiredCapabilities
-                    check(ToolSecurityRegistry.permits(t.name, invocationContext.isHeadless, capabilities)) {
-                        "Tool denied by execution policy: ${t.name}"
-                    }
-                    if (metadata.sideEffect != SideEffect.NONE) agentKillSwitch.requireWritesAllowed()
-                    t.execute(input)
-                })
-            } else if (invocationContext.isHeadless) {
-                t.copy(execute = { input ->
-                    agentKillSwitch.requireBackgroundAllowed()
-                    t.execute(input)
-                })
-            } else t
-            val withApproval = if (ToolApprovalDefaults.requiresApproval(secured.name)) {
-                secured.copy(needsApproval = { true })
+            val withApproval = if (ToolApprovalDefaults.requiresApproval(t.name)) {
+                t.copy(needsApproval = { true })
             } else {
-                secured
+                t
             }
             addHumanErrorEnvelopes(appendTopToolExample(withApproval))
         }

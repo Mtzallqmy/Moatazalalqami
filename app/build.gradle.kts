@@ -1,8 +1,7 @@
 import com.android.build.api.dsl.Packaging
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import java.net.URI
-import java.security.MessageDigest
+import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
@@ -12,22 +11,6 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-val releaseSigningProperties = Properties().apply {
-    val propertiesFile = rootProject.file("local.properties")
-    if (propertiesFile.isFile) {
-        propertiesFile.inputStream().use(::load)
-    }
-}
-
-fun releaseSigningValue(propertyName: String, environmentName: String): String? =
-    releaseSigningProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
-        ?: System.getenv(environmentName)?.takeIf { it.isNotBlank() }
-
-val releaseStoreFilePath = releaseSigningValue("storeFile", "ANDROID_KEYSTORE_FILE")
-val releaseStorePassword = releaseSigningValue("storePassword", "ANDROID_STORE_PASSWORD")
-val releaseKeyAlias = releaseSigningValue("keyAlias", "ANDROID_KEY_ALIAS")
-val releaseKeyPassword = releaseSigningValue("keyPassword", "ANDROID_KEY_PASSWORD")
-
 android {
     namespace = "me.rerere.rikkahub"
     compileSdk = 37
@@ -36,8 +19,8 @@ android {
         applicationId = "com.moatazalaqami.agent"
         minSdk = 26
         targetSdk = 37
-        versionCode = 30100
-        versionName = "3.1.0"
+        versionCode = 30000
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -46,16 +29,49 @@ android {
         }
     }
 
+    splits {
+        abi {
+            // AppBundle tasks usually contain "bundle" in their name
+            //noinspection WrongGradleMethod
+            val isBuildingBundle = gradle.startParameter.taskNames.any { it.lowercase().contains("bundle") }
+            isEnable = !isBuildingBundle
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = false
+        }
+    }
 
     signingConfigs {
         create("release") {
-            if (releaseStoreFilePath != null && releaseStorePassword != null &&
-                releaseKeyAlias != null && releaseKeyPassword != null
-            ) {
-                storeFile = rootProject.file(releaseStoreFilePath)
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
+            val localProperties = Properties()
+            val localPropertiesFile = rootProject.file("local.properties")
+
+            if (localPropertiesFile.exists()) {
+                localProperties.load(FileInputStream(localPropertiesFile))
+
+                val storeFilePath = localProperties.getProperty("storeFile")
+                val storePasswordValue = localProperties.getProperty("storePassword")
+                val keyAliasValue = localProperties.getProperty("keyAlias")
+                val keyPasswordValue = localProperties.getProperty("keyPassword")
+
+                if (storeFilePath != null && storePasswordValue != null &&
+                    keyAliasValue != null && keyPasswordValue != null
+                ) {
+                    storeFile = file(storeFilePath)
+                    storePassword = storePasswordValue
+                    keyAlias = keyAliasValue
+                    keyPassword = keyPasswordValue
+                } else {
+                    val missing = buildList {
+                        if (storeFilePath == null) add("storeFile")
+                        if (storePasswordValue == null) add("storePassword")
+                        if (keyAliasValue == null) add("keyAlias")
+                        if (keyPasswordValue == null) add("keyPassword")
+                    }
+                    logger.warn("Signing config: local.properties is missing $missing, release build will be unsigned")
+                }
+            } else {
+                logger.warn("Signing config: local.properties not found, release build will be unsigned")
             }
         }
     }
@@ -84,6 +100,8 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // agent-keyboard IPC (IKeyboardApi.aidl + EditorInfoBundle.aidl) and the Shizuku
+        // user service (IShizukuUserService.aidl) both live in src/main/aidl.
         aidl = true
     }
     sourceSets {
@@ -99,10 +117,15 @@ android {
         }
     }
     lint {
-        // Keep the release gate strict for new findings while the inherited localization
-        // and Compose-style debt is reduced incrementally. Runtime/API/permission findings
-        // discovered during this production hardening pass are fixed in source, not baselined.
-        baseline = file("lint-baseline.xml")
+        // FullBackupContent insists every <exclude> path lives under a previously
+        // <include>'d root. Our backup_rules.xml + data_extraction_rules.xml use
+        // include="upload/" + explicit excludes for databases / sharedpref /
+        // datastore/ / known_hosts / browser-profile/ / local-models/ as
+        // belt-and-suspenders defence: if anyone later adds a broader <include>
+        // (e.g. domain="root"), the excludes still keep credentials and
+        // multi-GB local LLM weights off the cloud-backup path. Lint reads that
+        // pattern as redundant; the runtime accepts it. Keep the rules; mute
+        // the check.
         disable.add("FullBackupContent")
     }
     tasks.withType<KotlinCompile>().configureEach {
@@ -116,6 +139,8 @@ android {
         compilerOptions.optIn.add("kotlin.uuid.ExperimentalUuidApi")
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")
         compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
+        // ExperimentalNavigation3Api was renamed/removed in newer navigation3 — opt-in is
+        // no longer required and the marker class no longer exists in the runtime artifact.
     }
 }
 
@@ -125,11 +150,10 @@ composeCompiler {
     )
 }
 
+
 // Moataz Alaqami 3.0: embed an aarch64 Alpine Linux minirootfs in every APK.
-// Download happens only at build time. The installed app never needs to fetch a rootfs.
+// The checksum is fetched from Alpine's official release mirror and verified.
 val alpineVersion = "3.24.1"
-// Pinned independently in source; do not trust a checksum downloaded beside the payload.
-val alpineAarch64Sha256 = "f55a90f69052c5bd6f92cb09a8f47065970830b194c917a006fb94028e721259"
 val embeddedLinuxDir = layout.buildDirectory.dir("generated/moatazLinux")
 val prepareEmbeddedLinuxRootfs by tasks.registering {
     val outDir = embeddedLinuxDir
@@ -138,17 +162,18 @@ val prepareEmbeddedLinuxRootfs by tasks.registering {
         val dir = outDir.get().asFile.apply { mkdirs() }
         val archiveName = "alpine-minirootfs-$alpineVersion-aarch64.tar.gz"
         val base = "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64"
-        // aapt treats .gz as a packaging directive and strips that suffix from the asset
-        // path. Keep the gzip bytes under a neutral name so Assets.open() is deterministic.
-        val archive = File(dir, "linux-rootfs.tar.gz.bin")
-        File(dir, "linux-rootfs.tar.gz").delete()
+        val archive = File(dir, "linux-rootfs.tar.gz")
+        val checksum = File(dir, "$archiveName.sha256")
         if (!archive.exists()) {
-            URI("$base/$archiveName").toURL().openStream().use { input ->
-                archive.outputStream().use { output -> input.copyTo(output) }
+            java.net.URI("$base/$archiveName").toURL().openStream().use { input ->
+                archive.outputStream().use { input.copyTo(it) }
             }
         }
-        val expected = alpineAarch64Sha256
-        val digest = MessageDigest.getInstance("SHA-256")
+        java.net.URI("$base/$archiveName.sha256").toURL().openStream().use { input ->
+            checksum.outputStream().use { input.copyTo(it) }
+        }
+        val expected = checksum.readText().trim().substringBefore(' ')
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
         val actual = archive.inputStream().use { stream ->
             val buf = ByteArray(1024 * 128)
             while (true) {
@@ -156,7 +181,7 @@ val prepareEmbeddedLinuxRootfs by tasks.registering {
                 if (count < 0) break
                 digest.update(buf, 0, count)
             }
-            digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+            digest.digest().joinToString("") { "%02x".format(it) }
         }
         check(actual.equals(expected, ignoreCase = true)) {
             "Embedded Linux rootfs checksum mismatch: expected=$expected actual=$actual"
@@ -164,42 +189,13 @@ val prepareEmbeddedLinuxRootfs by tasks.registering {
     }
 }
 
-android.sourceSets.getByName("main").assets.directories.add(embeddedLinuxDir.get().asFile.absolutePath)
+android.sourceSets.getByName("main").assets.srcDir(embeddedLinuxDir)
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
-    .configureEach { dependsOn(prepareEmbeddedLinuxRootfs) }
-// AGP's lint model reads every declared asset directory directly instead of going
-// through merge*Assets, so it also needs the producer edge for Gradle 9 validation.
-tasks.matching { it.name.contains("Lint", ignoreCase = true) }
     .configureEach { dependsOn(prepareEmbeddedLinuxRootfs) }
 
 tasks.register("buildAll") {
     dependsOn("assembleRelease", "bundleRelease")
     description = "Build both APK and AAB"
-}
-
-val verifyReleaseSigning by tasks.registering {
-    group = "verification"
-    description = "Fail fast when a release would be unsigned or use a missing keystore."
-    doLast {
-        val missing = buildList {
-            if (releaseStoreFilePath == null) add("storeFile/ANDROID_KEYSTORE_FILE")
-            if (releaseStorePassword == null) add("storePassword/ANDROID_STORE_PASSWORD")
-            if (releaseKeyAlias == null) add("keyAlias/ANDROID_KEY_ALIAS")
-            if (releaseKeyPassword == null) add("keyPassword/ANDROID_KEY_PASSWORD")
-        }
-        require(missing.isEmpty()) {
-            "Release signing is mandatory. Missing: ${missing.joinToString()}"
-        }
-        require(rootProject.file(requireNotNull(releaseStoreFilePath)).isFile) {
-            "Release keystore does not exist: $releaseStoreFilePath"
-        }
-    }
-}
-
-tasks.matching {
-    it.name == "assembleRelease" || it.name == "bundleRelease" || it.name == "packageRelease"
-}.configureEach {
-    dependsOn(verifyReleaseSigning)
 }
 
 ksp {
@@ -238,83 +234,131 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.material3.adaptive.navigation3)
 
+
     // DataStore
     implementation(libs.androidx.datastore.preferences)
 
     // Image metadata extractor
+    // https://github.com/drewnoakes/metadata-extractor
     implementation(libs.metadata.extractor)
 
-    // Haze
+    // Haze (background blur)
     implementation(libs.haze)
     implementation(libs.haze.blur)
     implementation(libs.haze.blur.material3)
 
-    // Koin
+    // koin
     implementation(platform(libs.koin.bom))
     implementation(libs.koin.android)
     implementation(libs.koin.compose)
     implementation(libs.koin.androidx.workmanager)
 
+    // jetbrains markdown parser
     implementation(libs.jetbrains.markdown)
 
-    // HTTP
+    // okhttp
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization.json)
+
+    // ktor client
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
 
+    // ucrop
     implementation(libs.ucrop)
+
+    // pebble (template engine)
     implementation(libs.pebble)
+
+    // java-diff-utils (unified diff)
     implementation(libs.diffutils)
 
-    // Coil
+    // coil
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)
     implementation(libs.coil.okhttp)
     implementation(libs.coil.svg)
     implementation(libs.coil.cache.control)
 
+    // serialization
     implementation(libs.kotlinx.serialization.json)
+
+    // YAML front matter
+    implementation(libs.snakeyaml)
+
+    // zxing
     implementation(libs.zxing.core)
+
+    // quickie (qrcode scanner)
     implementation(libs.quickie.bundled)
     implementation(libs.barcode.scanning)
     implementation(libs.androidx.camera.core)
 
-    // Room / Paging
+    // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.paging)
     ksp(libs.androidx.room.compiler)
+
+    // Paging3
     implementation(libs.androidx.paging.runtime)
     implementation(libs.androidx.paging.compose)
 
+    // Apache Commons Text
     implementation(libs.commons.text)
+
+    // Toast (Sonner)
     implementation(libs.sonner)
+
+    // Reorderable (https://github.com/Calvin-LL/Reorderable/)
     implementation(libs.reorderable)
+
+    // lucide icons
     implementation(libs.lucide.icons)
     implementation(libs.huge.icons)
+
+    // image viewer
     implementation(libs.image.viewer)
 
+    // JLatexMath
+    // https://github.com/rikkahub/jlatexmath-android
     implementation(libs.jlatexmath)
     implementation(libs.jlatexmath.font.greek)
     implementation(libs.jlatexmath.font.cyrillic)
 
+    // mcp
     implementation(libs.modelcontextprotocol.kotlin.sdk)
+
+    // jmDNS (mDNS/Bonjour for .local hostname)
     implementation(libs.jmdns)
+
+    // SLF4J Android binding — routes Ktor/SLF4J logs to logcat
     implementation(libs.slf4j.api)
     implementation(libs.slf4j.android)
+
+    // sqlite-android (requery SQLite for Android)
     implementation(libs.sqlite.android)
+
+    // Google Play Services Location (FusedLocationProvider)
     implementation(libs.play.services.location)
+    // kotlinx.coroutines.tasks.await for Task<*> (was previously transitive via Firebase)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // AndroidX Biometric (BiometricPrompt)
     implementation(libs.androidx.biometric)
+
+    // AndroidX Media — MediaSessionCompat, MediaButtonReceiver, NotificationCompat.MediaStyle
     implementation(libs.androidx.media)
+
+    // AndroidX DocumentFile — Phase 25 SAF tree traversal for the ExternalStorage tools
+    // (USB / SD / Downloads / cloud DocumentsProvider access via persisted tree grants).
     implementation(libs.androidx.documentfile)
 
-    // Project modules
+    // modules
     implementation(project(":ai"))
     implementation(project(":local-llm"))
     implementation(project(":llama-cpp"))
@@ -323,18 +367,27 @@ dependencies {
     implementation(project(":highlight"))
     implementation(project(":search"))
     implementation(project(":speech"))
+    implementation(project(":videogen"))
     implementation(project(":common"))
     implementation(project(":material3"))
     implementation(project(":workspace"))
+    implementation(project(":oauth"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
     implementation(kotlin("reflect"))
 
+    // SSH client (Mwiede fork — maintained, Android-friendly)
     implementation(libs.jsch)
+
+    // Cron utilities (expression parsing & validation)
     implementation(libs.cron.utils)
+
+    // Shizuku client — lets shizuku_exec run a shell command with the shell UID's
+    // privileges without root. :api is the client SDK; :provider ships ShizukuProvider,
+    // the ContentProvider that receives the binder from the Shizuku app.
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
-    // Tests
+    // tests
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

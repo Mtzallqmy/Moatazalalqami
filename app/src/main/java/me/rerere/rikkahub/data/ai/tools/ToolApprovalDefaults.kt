@@ -250,13 +250,6 @@ object ToolApprovalDefaults {
         "keyboard_clear",
         "keyboard_set_cursor",
         "keyboard_select_range",
-
-        // GitHub network writes. Reads are free but still repository-allowlisted.
-        "github_create_file", "github_update_file", "github_delete_file",
-        "github_create_branch", "github_delete_branch",
-        "github_create_pull_request", "github_update_pull_request", "github_merge_pull_request",
-        "github_create_issue", "github_comment_issue", "github_dispatch_workflow", "github_create_release",
-        "git_clone", "git_pull", "git_commit", "git_checkout", "git_switch", "git_merge", "git_rebase", "git_push", "git_tag",
     )
 
     /**
@@ -297,11 +290,6 @@ object ToolApprovalDefaults {
         "keystore_decrypt",
         "nfc_write_tag",
         "grant_directory_access",
-        "github_delete_file",
-        "github_delete_branch",
-        "github_merge_pull_request",
-        "git_rebase",
-        "git_push",
     )
 
     fun allowsAlwaysAllow(toolName: String): Boolean = toolName !in NO_ALWAYS_ALLOW

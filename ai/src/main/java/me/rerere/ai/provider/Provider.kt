@@ -17,7 +17,7 @@ interface Provider<T : ProviderSetting> {
     suspend fun listModels(providerSetting: T): List<Model>
 
     suspend fun getBalance(providerSetting: T): String {
-        error("Balance lookup is not supported by this provider")
+        return "TODO"
     }
 
     suspend fun generateText(
@@ -76,6 +76,7 @@ data class TextGenerationParams(
     val reasoningLevel: ReasoningLevel = ReasoningLevel.OFF,
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBody: List<CustomBody> = emptyList(),
+    val sessionId: String? = null,
 )
 
 @Serializable

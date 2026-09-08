@@ -7,10 +7,6 @@ android {
     namespace = "me.rerere.workspace"
 
     defaultConfig {
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
-
         externalNativeBuild {
             cmake {
                 cppFlags += ""

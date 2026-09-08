@@ -18,9 +18,6 @@ import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.tools.HardlineCommandGuard
 import me.rerere.rikkahub.data.preferences.TermuxRuntime
-import me.rerere.rikkahub.reliability.SecretRedactor
-import me.rerere.rikkahub.terminal.TerminalEvent
-import me.rerere.rikkahub.terminal.TerminalEventBus
 import java.util.UUID
 
 internal const val TERMUX_BIN = "/data/data/com.termux/files/usr/bin"
@@ -248,12 +245,11 @@ private fun truncateOut(s: String): String {
     val max = TermuxRuntime.maxStdoutBytes
     // Bound on UTF-8 bytes, not chars: maxStdoutBytes is a byte budget, and a char-count cut
     // would over- or under-shoot for multibyte text and could split a code point.
-    val bounded = if (trimmed.toByteArray(Charsets.UTF_8).size > max) {
+    return if (trimmed.toByteArray(Charsets.UTF_8).size > max) {
         takeLastUtf8Bytes(trimmed, max) + "\n…[older scrollback truncated]"
     } else {
         trimmed
     }
-    return SecretRedactor.redact(bounded)
 }
 
 private fun reasonTag(r: PollResult.Reason): String = when (r) {
@@ -273,7 +269,6 @@ private suspend fun readUntilDone(
     lines: Int,
     waitFor: String?,
     timeoutMs: Long,
-    onScreen: (String) -> Unit = {},
 ): CaptureResult {
     val start = android.os.SystemClock.elapsedRealtime()
     val samples = ArrayList<PaneSample>()
@@ -282,7 +277,6 @@ private suspend fun readUntilDone(
         if (cap is CaptureResult.Success) {
             val elapsed = android.os.SystemClock.elapsedRealtime() - start
             samples.add(PaneSample(elapsed, cap.stdout))
-            onScreen(cap.stdout)
             when (val d = evaluatePoll(samples, SETTLE_MS, timeoutMs, waitFor)) {
                 is PollResult.Done -> return CaptureResult.Success(d.content, reasonTag(d.reason), 0)
                 PollResult.Continue -> {}
@@ -374,30 +368,18 @@ fun termuxSessionStartTool(context: Context): Tool = Tool(
         if (started !is CaptureResult.Success) {
             return@Tool sessionErrorEnvelope("session_start_failed", "tmux new-session failed.")
         }
-        TerminalEventBus.publish(TerminalEvent.SessionStarted(name, name, TERMUX_HOME))
-        TerminalEventBus.registerStopHandler(name) {
-            tmux(context, TmuxOps.killArgv(name))
-            TerminalEventBus.publish(TerminalEvent.SessionStopped(name))
-            TerminalEventBus.forget(name)
-        }
         val initial = input.jsonObject["command"]?.jsonPrimitive?.contentOrNull
         if (!initial.isNullOrBlank()) {
             HardlineCommandGuard.checkCommand(initial)?.let {
-                tmux(context, TmuxOps.killArgv(name))
-                TerminalEventBus.publish(TerminalEvent.SessionStopped(name))
-                TerminalEventBus.forget(name)
                 return@Tool sessionErrorEnvelope("blocked_by_safety_floor", it)
             }
             tmux(context, TmuxOps.sendTextArgv(name, initial))
             tmux(context, TmuxOps.enterArgv(name))
-            TerminalEventBus.publish(TerminalEvent.CommandStarted(name, initial))
         }
         // The session is already created at this point, so a failed screen read (Timeout/
         // Denied/OtherError from readUntilDone) must not crash or report start failure —
         // the model would retry the start and hit too_many_sessions.
-        val read = readUntilDone(context, name, DEFAULT_READ_LINES, null, DEFAULT_TIMEOUT_S * 1000L) {
-            TerminalEventBus.publish(TerminalEvent.ScreenUpdated(name, truncateOut(it)))
-        } as? CaptureResult.Success
+        val read = readUntilDone(context, name, DEFAULT_READ_LINES, null, DEFAULT_TIMEOUT_S * 1000L) as? CaptureResult.Success
         listOf(UIMessagePart.Text(buildJsonObject {
             put("success", true); put("session_id", name)
             put("screen", read?.let { truncateOut(it.stdout) } ?: "")
@@ -428,7 +410,6 @@ fun termuxSessionSendTool(context: Context): Tool = Tool(
         val keys = input.jsonObject["keys"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
         val waitFor = input.jsonObject["wait_for"]?.jsonPrimitive?.contentOrNull
         val timeoutMs = resolveTimeoutMs(input)
-        if (!text.isNullOrBlank()) TerminalEventBus.publish(TerminalEvent.CommandStarted(session, text))
         if (!text.isNullOrEmpty()) {
             HardlineCommandGuard.checkCommand(text)?.let {
                 return@Tool sessionErrorEnvelope("blocked_by_safety_floor", it)
@@ -453,18 +434,12 @@ fun termuxSessionSendTool(context: Context): Tool = Tool(
                 return@Tool sessionNotFoundEnvelope(context, session)
             }
         }
-        val read = readUntilDone(context, session, DEFAULT_READ_LINES, waitFor, timeoutMs) {
-            TerminalEventBus.publish(TerminalEvent.ScreenUpdated(session, truncateOut(it)))
-        }
+        val read = readUntilDone(context, session, DEFAULT_READ_LINES, waitFor, timeoutMs)
         if (read is CaptureResult.OtherError && isSessionNotFound(read.message)) {
             return@Tool sessionNotFoundEnvelope(context, session)
         }
         val r = read as? CaptureResult.Success
             ?: return@Tool sessionErrorEnvelope("read_failed", "Input was sent, but the screen read failed. Use termux_session_read to see the result.")
-        // A tmux shell remains alive after a command settles and may be waiting for more
-        // interactive input. Do not mark the shared session as stopped merely because this
-        // individual capture loop completed.
-        TerminalEventBus.publish(TerminalEvent.WaitingForInput(session, waitFor))
         listOf(UIMessagePart.Text(buildJsonObject {
             put("success", true)
             put("screen", truncateOut(r.stdout))
@@ -501,7 +476,6 @@ fun termuxSessionReadTool(context: Context): Tool = Tool(
         }
         val r = read as? CaptureResult.Success
             ?: return@Tool sessionErrorEnvelope("read_failed", "Could not read session.")
-        TerminalEventBus.publish(TerminalEvent.ScreenUpdated(session, truncateOut(r.stdout)))
         listOf(UIMessagePart.Text(buildJsonObject {
             put("success", true); put("screen", truncateOut(r.stdout))
         }.toString()))
@@ -521,8 +495,6 @@ fun termuxSessionKillTool(context: Context): Tool = Tool(
         val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull
             ?: return@Tool sessionErrorEnvelope("missing_session_id", "Pass session_id.")
         tmux(context, TmuxOps.killArgv(session))
-        TerminalEventBus.publish(TerminalEvent.SessionStopped(session))
-        TerminalEventBus.forget(session)
         listOf(UIMessagePart.Text(buildJsonObject { put("success", true); put("killed", session) }.toString()))
     }
 )

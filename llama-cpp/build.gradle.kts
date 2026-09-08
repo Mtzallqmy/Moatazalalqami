@@ -11,10 +11,8 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Moataz Alaqami ships a single production ABI. Keeping every native
-        // module aligned prevents unnecessary x86 builds and mixed-ABI APKs.
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
 
         externalNativeBuild {

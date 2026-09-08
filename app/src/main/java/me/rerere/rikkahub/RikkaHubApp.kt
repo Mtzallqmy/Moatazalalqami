@@ -90,6 +90,11 @@ class RikkaHubApp : Application() {
         // cleanup workspace temp dirs (proot + rootfs /tmp)
         cleanupWorkspaceTempDirs()
 
+        // Recover durable sandbox metadata and clean only expired sessions. Dirty Git
+        // worktrees are deliberately retained by SandboxManager's fail-safe cleanup.
+        runCatching { get<me.rerere.workspace.agent.SandboxManager>().cleanupExpiredSandboxes() }
+            .onFailure { Log.w(TAG, "sandbox recovery cleanup failed", it) }
+
         // check workspace integrity (mark workspaces with missing files as broken after backup restore)
         checkWorkspaceIntegrity()
 

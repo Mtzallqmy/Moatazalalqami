@@ -125,6 +125,14 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         return
     }
 
+    if (tool.toolName.startsWith("termux_session_")) {
+        val sessionId = tool.inputAsJson().getStringContent("session_id")
+            ?: tool.output.filterIsInstance<UIMessagePart.Text>().firstNotNullOfOrNull { part ->
+                runCatching { JsonInstant.parseToJsonElement(part.text).getStringContent("session_id") }.getOrNull()
+            }
+        if (sessionId != null) LiveTerminalCard(sessionId)
+    }
+
     val renderer = remember(tool.toolName) { ToolUIRegistry.resolve(tool.toolName) }
     val context = remember(tool, loading) {
         ToolUIContext(

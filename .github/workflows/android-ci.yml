@@ -201,4 +201,4 @@ jobs:
           profile: pixel_2
           # Gate the application's instrumentation suite. Running the aggregate root task also
           # tries to install ARM64-only native library test APKs on this x86_64 API 26 emulator.
-          script: ./gradlew :app:connectedDebugAndroidTest --stacktrace --console=plain
+          script: ./gradlew :app:connectedDebugAndroidTest -PciInstrumentation=true --stacktrace --console=plain

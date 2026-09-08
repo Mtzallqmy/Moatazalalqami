@@ -8,7 +8,11 @@ android {
 
     defaultConfig {
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += if (project.findProperty("ciInstrumentation") == "true") {
+                listOf("arm64-v8a", "x86_64")
+            } else {
+                listOf("arm64-v8a")
+            }
         }
 
         externalNativeBuild {
@@ -21,14 +25,6 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
-        }
-    }
-    buildTypes {
-        release {
-            ndk {
-                abiFilters.clear()
-                abiFilters += "arm64-v8a"
-            }
         }
     }
 }

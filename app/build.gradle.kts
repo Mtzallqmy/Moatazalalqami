@@ -43,8 +43,12 @@ android {
 
         ndk {
             // x86_64 exists only so API 26 instrumentation can run with hardware acceleration.
-            // The release build type below resets this set to the production ARM64 ABI.
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            // Normal builds, including every release build, remain ARM64-only.
+            abiFilters += if (project.findProperty("ciInstrumentation") == "true") {
+                listOf("arm64-v8a", "x86_64")
+            } else {
+                listOf("arm64-v8a")
+            }
         }
     }
 
@@ -64,10 +68,6 @@ android {
 
     buildTypes {
         release {
-            ndk {
-                abiFilters.clear()
-                abiFilters += "arm64-v8a"
-            }
             signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = true

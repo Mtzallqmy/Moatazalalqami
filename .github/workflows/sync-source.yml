@@ -3,10 +3,6 @@ name: Import and modernize source
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/sync-source.yml'
-      - 'scripts/modernize.py'
 
 permissions:
   contents: write
@@ -17,6 +13,8 @@ concurrency:
 
 jobs:
   sync:
+    # This job rewrites the repository and pushes to main. It must never be activated
+    # merely by editing this workflow or a modernization script on a feature branch.
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:

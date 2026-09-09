@@ -7,6 +7,14 @@ android {
     namespace = "me.rerere.workspace"
 
     defaultConfig {
+        ndk {
+            abiFilters += if (project.findProperty("ciInstrumentation") == "true") {
+                listOf("arm64-v8a", "x86_64")
+            } else {
+                listOf("arm64-v8a")
+            }
+        }
+
         externalNativeBuild {
             cmake {
                 cppFlags += ""

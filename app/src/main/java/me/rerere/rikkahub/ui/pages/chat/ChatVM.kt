@@ -11,7 +11,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -173,7 +172,7 @@ class ChatVM(
         }
         .distinctUntilChanged()
         .flatMapLatest { enabled ->
-            if (enabled) updateChecker.updateState else flowOf(UiState.Loading)
+            if (enabled) updateChecker.checkUpdate() else flowOf(UiState.Loading)
         }
         .stateIn(
             viewModelScope,
@@ -201,7 +200,7 @@ class ChatVM(
         }
     }
 
-    fun handleCompressContext(additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int): Deferred<Result<Unit>> {
+    fun handleCompressContext(additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int): Job {
         return chatService.compressConversationAsync(
             conversationId = _conversationId,
             conversation = conversation.value,
@@ -273,6 +272,13 @@ class ChatVM(
     fun saveConversationAsync() {
         viewModelScope.launch {
             chatService.saveConversation(_conversationId, conversation.value)
+        }
+    }
+
+    fun updateTitle(title: String) {
+        viewModelScope.launch {
+            val updatedConversation = conversation.value.copy(title = title)
+            chatService.saveConversation(_conversationId, updatedConversation)
         }
     }
 

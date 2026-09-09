@@ -13,7 +13,6 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
-import me.rerere.rikkahub.R
 import me.rerere.rikkahub.service.RikkaAccessibilityService
 import me.rerere.rikkahub.service.RikkaNotificationListenerService
 
@@ -94,8 +93,8 @@ object PermissionInventory {
                 val granted = Settings.canDrawOverlays(context)
                 return Row(
                     id = perm,
-                    label = context.getString(R.string.perm_label_overlay),
-                    description = context.getString(R.string.perm_desc_overlay),
+                    label = "Display over other apps",
+                    description = "Lets Moataz Alaqami draw the \"agent is working\" overlay while automation is in progress.",
                     status = if (granted) Status.GRANTED else Status.DENIED,
                     group = Group.SpecialAccess,
                     grant = GrantAction.SystemSettings(
@@ -107,8 +106,8 @@ object PermissionInventory {
                 val granted = Settings.System.canWrite(context)
                 return Row(
                     id = perm,
-                    label = context.getString(R.string.perm_label_write_settings),
-                    description = context.getString(R.string.perm_desc_write_settings),
+                    label = "Modify system settings",
+                    description = "Lets the agent change brightness via set_brightness.",
                     status = if (granted) Status.GRANTED else Status.DENIED,
                     group = Group.SpecialAccess,
                     grant = GrantAction.SystemSettings(
@@ -121,8 +120,8 @@ object PermissionInventory {
                 val granted = nm?.isNotificationPolicyAccessGranted == true
                 return Row(
                     id = perm,
-                    label = context.getString(R.string.perm_label_dnd),
-                    description = context.getString(R.string.perm_desc_dnd),
+                    label = "Do Not Disturb access",
+                    description = "Lets the agent change ringer mode and per-stream volume.",
                     status = if (granted) Status.GRANTED else Status.DENIED,
                     group = Group.SpecialAccess,
                     grant = GrantAction.SystemSettings(
@@ -135,8 +134,8 @@ object PermissionInventory {
                 val granted = pwm?.isIgnoringBatteryOptimizations(context.packageName) == true
                 return Row(
                     id = perm,
-                    label = context.getString(R.string.perm_label_battery),
-                    description = context.getString(R.string.perm_desc_battery),
+                    label = "Ignore battery optimizations",
+                    description = "Keeps the Telegram bot foreground service responsive when the screen is off.",
                     status = if (granted) Status.GRANTED else Status.DENIED,
                     group = Group.SpecialAccess,
                     // ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS pops a system dialog asking
@@ -152,14 +151,14 @@ object PermissionInventory {
                         PackageManager.PERMISSION_GRANTED
                     Row(
                         id = perm,
-                        label = context.getString(R.string.perm_label_post_notifications),
-                        description = context.getString(R.string.perm_desc_post_notifications),
+                        label = "Post notifications",
+                        description = "Required so the bot foreground service and TTS / progress notifications can show.",
                         status = if (granted) Status.GRANTED else Status.DENIED,
                         group = Group.Runtime,
                         grant = GrantAction.Runtime(perm),
                     )
                 } else {
-                    autoRow(context, perm, context.getString(R.string.perm_label_post_notifications))
+                    autoRow(perm, "Post notifications")
                 }
             }
         }
@@ -182,14 +181,19 @@ object PermissionInventory {
             return Row(
                 id = perm,
                 label = humanize(perm),
-                description = context.getString(R.string.perm_desc_custom),
+                description = "Custom permission. Owner app may not be installed yet.",
                 status = if (granted) Status.GRANTED else Status.DENIED,
                 group = Group.Runtime,
                 grant = GrantAction.Runtime(perm),
             )
         }
 
-        val protectionBase = info.protection
+        val protectionBase = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.protection
+        } else {
+            @Suppress("DEPRECATION")
+            info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE
+        }
         val isDangerous = protectionBase == PermissionInfo.PROTECTION_DANGEROUS
         val granted = ContextCompat.checkSelfPermission(context, perm) ==
             PackageManager.PERMISSION_GRANTED
@@ -197,21 +201,21 @@ object PermissionInventory {
         return if (isDangerous) {
             Row(
                 id = perm,
-                label = labelOrHumanize(context, perm),
-                description = describeRuntime(context, perm),
+                label = labelOrHumanize(perm),
+                description = describeRuntime(perm),
                 status = if (granted) Status.GRANTED else Status.DENIED,
                 group = Group.Runtime,
                 grant = GrantAction.Runtime(perm),
             )
         } else {
-            autoRow(context, perm, labelOrHumanize(context, perm))
+            autoRow(perm, labelOrHumanize(perm))
         }
     }
 
-    private fun autoRow(context: Context, perm: String, label: String) = Row(
+    private fun autoRow(perm: String, label: String) = Row(
         id = perm,
         label = label,
-        description = context.getString(R.string.perm_desc_auto),
+        description = "Auto-granted at install (no user action needed).",
         status = Status.AUTO_GRANTED,
         group = Group.AutoGranted,
         grant = GrantAction.None,
@@ -225,8 +229,8 @@ object PermissionInventory {
         ) ?: "").split(":").any { it.equals(component, ignoreCase = true) }
         return Row(
             id = "rikkahub.SERVICE_ACCESSIBILITY",
-            label = context.getString(R.string.perm_label_accessibility),
-            description = context.getString(R.string.perm_desc_accessibility),
+            label = "Screen automation (Accessibility)",
+            description = "Required for tap, swipe, click_node, screenshot, read_window_tree, set_text and other UI-driving tools.",
             status = if (enabled) Status.GRANTED else Status.DENIED,
             group = Group.ServicesAndIntegrations,
             grant = GrantAction.SystemSettings(
@@ -243,8 +247,8 @@ object PermissionInventory {
         ) ?: "").split(":").any { it.equals(component, ignoreCase = true) }
         return Row(
             id = "rikkahub.SERVICE_NOTIFICATION_LISTENER",
-            label = context.getString(R.string.perm_label_notification_listener),
-            description = context.getString(R.string.perm_desc_notification_listener),
+            label = "Notification access",
+            description = "Lets the agent read incoming notifications and auto-forward whitelisted apps to Telegram.",
             status = if (enabled) Status.GRANTED else Status.DENIED,
             group = Group.ServicesAndIntegrations,
             grant = GrantAction.SystemSettings(
@@ -256,38 +260,36 @@ object PermissionInventory {
 
     // -- Friendly labels for every dangerous permission we currently request ------------------
 
-    private fun labelOrHumanize(context: Context, perm: String) = labelFor(context, perm) ?: humanize(perm)
-    private fun describeRuntime(context: Context, perm: String) =
-        descriptionFor(context, perm) ?: context.getString(R.string.perm_desc_runtime_default)
+    private val LABELS = mapOf(
+        Manifest.permission.CAMERA to "Camera",
+        Manifest.permission.RECORD_AUDIO to "Microphone",
+        Manifest.permission.READ_PHONE_STATE to "Phone state",
+        Manifest.permission.ACCESS_FINE_LOCATION to "Precise location",
+        Manifest.permission.ACCESS_COARSE_LOCATION to "Approximate location",
+        Manifest.permission.READ_CONTACTS to "Contacts",
+        Manifest.permission.READ_CALL_LOG to "Call log",
+        Manifest.permission.READ_SMS to "SMS",
+        Manifest.permission.SEND_SMS to "Send SMS",
+        Manifest.permission.POST_NOTIFICATIONS to "Post notifications",
+        "com.termux.permission.RUN_COMMAND" to "Termux RUN_COMMAND",
+    )
 
-    private fun labelFor(context: Context, perm: String): String? = when (perm) {
-        Manifest.permission.CAMERA -> context.getString(R.string.perm_label_camera)
-        Manifest.permission.RECORD_AUDIO -> context.getString(R.string.perm_label_microphone)
-        Manifest.permission.READ_PHONE_STATE -> context.getString(R.string.perm_label_phone_state)
-        Manifest.permission.ACCESS_FINE_LOCATION -> context.getString(R.string.perm_label_fine_location)
-        Manifest.permission.ACCESS_COARSE_LOCATION -> context.getString(R.string.perm_label_coarse_location)
-        Manifest.permission.READ_CONTACTS -> context.getString(R.string.perm_label_contacts)
-        Manifest.permission.READ_CALL_LOG -> context.getString(R.string.perm_label_call_log)
-        Manifest.permission.READ_SMS -> context.getString(R.string.perm_label_sms)
-        Manifest.permission.SEND_SMS -> context.getString(R.string.perm_label_send_sms)
-        Manifest.permission.POST_NOTIFICATIONS -> context.getString(R.string.perm_label_post_notifications)
-        "com.termux.permission.RUN_COMMAND" -> context.getString(R.string.perm_label_termux_run)
-        else -> null
-    }
+    private val DESCRIPTIONS = mapOf(
+        Manifest.permission.CAMERA to "Used by take_photo to capture a still image.",
+        Manifest.permission.RECORD_AUDIO to "Used by record_audio and speech_to_text.",
+        Manifest.permission.READ_PHONE_STATE to "Used by get_telephony_info (SIM operator, signal).",
+        Manifest.permission.ACCESS_FINE_LOCATION to "Used by get_location and get_wifi_info.",
+        Manifest.permission.ACCESS_COARSE_LOCATION to "Approximate location fallback for get_location.",
+        Manifest.permission.READ_CONTACTS to "Used by search_contacts and list_contacts.",
+        Manifest.permission.READ_CALL_LOG to "Used by list_call_log.",
+        Manifest.permission.READ_SMS to "Used by list_sms_inbox and search_sms.",
+        Manifest.permission.SEND_SMS to "Used by send_sms to send text messages programmatically.",
+        "com.termux.permission.RUN_COMMAND" to "Lets Moataz Alaqami start commands inside Termux for the termux_run_command tool.",
+    )
 
-    private fun descriptionFor(context: Context, perm: String): String? = when (perm) {
-        Manifest.permission.CAMERA -> context.getString(R.string.perm_desc_camera)
-        Manifest.permission.RECORD_AUDIO -> context.getString(R.string.perm_desc_microphone)
-        Manifest.permission.READ_PHONE_STATE -> context.getString(R.string.perm_desc_phone_state)
-        Manifest.permission.ACCESS_FINE_LOCATION -> context.getString(R.string.perm_desc_fine_location)
-        Manifest.permission.ACCESS_COARSE_LOCATION -> context.getString(R.string.perm_desc_coarse_location)
-        Manifest.permission.READ_CONTACTS -> context.getString(R.string.perm_desc_contacts)
-        Manifest.permission.READ_CALL_LOG -> context.getString(R.string.perm_desc_call_log)
-        Manifest.permission.READ_SMS -> context.getString(R.string.perm_desc_sms)
-        Manifest.permission.SEND_SMS -> context.getString(R.string.perm_desc_send_sms)
-        "com.termux.permission.RUN_COMMAND" -> context.getString(R.string.perm_desc_termux_run)
-        else -> null
-    }
+    private fun labelOrHumanize(perm: String) = LABELS[perm] ?: humanize(perm)
+    private fun describeRuntime(perm: String) =
+        DESCRIPTIONS[perm] ?: "Runtime permission required by one or more enabled tools."
 
     private fun humanize(perm: String): String {
         val tail = perm.substringAfterLast('.')

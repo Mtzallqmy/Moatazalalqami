@@ -238,7 +238,6 @@ object ModelRegistry {
         notTokens("claude", "sonnet", "4")
         visionInput()
         toolReasoningAbility()
-        contextLength(1.m)
     }
 
     private val CLAUDE_OPUS_5 = defineModel {
@@ -246,7 +245,6 @@ object ModelRegistry {
         notTokens("claude", "opus", "4")
         visionInput()
         toolReasoningAbility()
-        contextLength(1.m)
     }
 
     val CLAUDE_SERIES = defineGroup {
@@ -291,20 +289,11 @@ object ModelRegistry {
     private val DEEPSEEK_V4_FLASH = defineModel {
         tokens("deepseek", "v", "4", "flash")
         toolReasoningAbility()
-        contextLength(1.m)
-    }
-
-    private val DEEPSEEK_V4_FLASH_VISION_EXP = defineModel {
-        tokens("deepseek", "v", "4", "flash", "vision", "exp")
-        visionInput()
-        toolReasoningAbility()
-        contextLength(1.m)
     }
 
     private val DEEPSEEK_V4_PRO = defineModel {
         tokens("deepseek", "v", "4", "pro")
         toolReasoningAbility()
-        contextLength(1.m)
     }
 
     private val DEEPSEEK_R1 = defineGroup {
@@ -340,12 +329,6 @@ object ModelRegistry {
 
     private val QWEN_3_7 = defineModel {
         tokens("qwen", "3", "7")
-        visionInput()
-        toolReasoningAbility()
-    }
-
-    private val QWEN_3_8 = defineModel {
-        tokens("qwen", "3", "8")
         visionInput()
         toolReasoningAbility()
     }
@@ -478,17 +461,6 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
-    private val GLM_5_3 = defineModel {
-        tokens("glm", "5", "3")
-        toolReasoningAbility()
-    }
-
-    private val GLM_5_3_FLASH = defineModel {
-        tokens("glm", "5", "3", "flash")
-        visionInput()
-        toolReasoningAbility()
-    }
-
     private val MINIMAX_M2 = defineModel {
         tokens("minimax", "m", "2")
         toolReasoningAbility()
@@ -545,11 +517,6 @@ object ModelRegistry {
 
     private val HY3 = defineModel {
         tokens("hy", "3")
-        toolReasoningAbility()
-    }
-
-    private val HY4 = defineModel {
-        tokens("hy", "4")
         toolReasoningAbility()
     }
 
@@ -617,7 +584,6 @@ object ModelRegistry {
         DEEPSEEK_R1_MODEL,
         DEEPSEEK_REASONER,
         DEEPSEEK_V4_FLASH,
-        DEEPSEEK_V4_FLASH_VISION_EXP,
         DEEPSEEK_V4_PRO,
         DEEPSEEK_V3_1,
         DEEPSEEK_V3_2,
@@ -625,7 +591,6 @@ object ModelRegistry {
         QWEN_3_5,
         QWEN_3_6,
         QWEN_3_7,
-        QWEN_3_8,
         QWEN_3_5_MAX,
         QWEN_3_6_MAX,
         QWEN_3_7_MAX,
@@ -649,8 +614,6 @@ object ModelRegistry {
         GLM_5,
         GLM_5_1,
         GLM_5_2,
-        GLM_5_3,
-        GLM_5_3_FLASH,
         MINIMAX_M2,
         MINIMAX_M2_5,
         MINIMAX_M2_7,
@@ -662,7 +625,6 @@ object ModelRegistry {
         XIAOMI_MIMO_V3,
         XIAOMI_MIMO_V3_PRO,
         HY3,
-        HY4,
         LONGCAT_2,
         MUSE_SPARK,
         MUSE_GLIMMER,
@@ -685,10 +647,6 @@ object ModelRegistry {
             if (ModelAbility.TOOL in abilities) add(ModelAbility.TOOL)
             if (ModelAbility.REASONING in abilities) add(ModelAbility.REASONING)
         }
-    }
-
-    val MODEL_CONTEXT_LENGTH = ModelData { modelId ->
-        resolveModels(modelId).firstNotNullOfOrNull { it.contextLength }
     }
 
     private fun resolveModels(modelId: String): List<ModelDefinition> {
@@ -742,7 +700,4 @@ object ModelRegistry {
     private fun ModelDefinitionBuilder.toolReasoningAbility() {
         ability(ModelAbility.TOOL, ModelAbility.REASONING)
     }
-
-    private val Int.k: Int get() = this * 1_000
-    private val Int.m: Int get() = this * 1_000_000
 }

@@ -180,29 +180,6 @@ fun ModelSelector(
         providers = providers,
         type = type,
     )
-
-    ModelSelectorButton(
-        state = state,
-        modifier = modifier,
-        onlyIcon = onlyIcon,
-        allowClear = allowClear,
-        onClear = { onSelect(Model()) },
-    )
-
-    ModelListSheet(
-        state = state,
-        onSelect = onSelect,
-    )
-}
-
-@Composable
-internal fun ModelSelectorButton(
-    state: ModelListState,
-    modifier: Modifier = Modifier,
-    onlyIcon: Boolean = false,
-    allowClear: Boolean = false,
-    onClear: () -> Unit = {},
-) {
     val model = state.currentModel
 
     if (!onlyIcon) {
@@ -232,7 +209,9 @@ internal fun ModelSelectorButton(
             }
             if (allowClear && model != null) {
                 IconButton(
-                    onClick = onClear,
+                    onClick = {
+                        onSelect(Model())
+                    }
                 ) {
                     Icon(
                         imageVector = HugeIcons.Cancel01,
@@ -262,6 +241,11 @@ internal fun ModelSelectorButton(
             }
         }
     }
+
+    ModelListSheet(
+        state = state,
+        onSelect = onSelect,
+    )
 }
 
 @Composable

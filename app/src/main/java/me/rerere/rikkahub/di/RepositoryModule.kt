@@ -73,6 +73,11 @@ val repositoryModule = module {
     }
 
     single {
+        val context: Context = get()
+        me.rerere.workspace.agent.SandboxManager(File(context.filesDir, "sandboxes"), get())
+    }
+
+    single {
         WorkspaceRepository(get(), get(), get(), get(), get())
     }
 

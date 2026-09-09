@@ -25,7 +25,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.OutlinedNumberInput
 import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
@@ -34,26 +34,21 @@ import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 fun CompressContextDialog(
     defaultTargetTokens: Int,
     onDismiss: () -> Unit,
-    onConfirm: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int) -> Deferred<Result<Unit>>
+    onConfirm: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int) -> Job
 ) {
     var additionalPrompt by remember { mutableStateOf("") }
     var targetTokensK by remember(defaultTargetTokens) { mutableStateOf("") }
     var keepRecentMessages by remember { mutableStateOf(32) }
-    var currentDeferred by remember { mutableStateOf<Deferred<Result<Unit>>?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    val isLoading = currentDeferred?.isActive == true
+    var currentJob by remember { mutableStateOf<Job?>(null) }
+    val isLoading = currentJob?.isActive == true
 
-    // Monitor compression completion. Only dismiss on success -- a failed compression used to
-    // complete this coroutine "normally" (Result.failure, not a thrown exception), so the
-    // dialog dismissed on failure just like on success. Keep it open and show the message
-    // inline instead.
-    LaunchedEffect(currentDeferred) {
-        val deferred = currentDeferred ?: return@LaunchedEffect
-        runCatching { deferred.await() }.getOrNull()?.fold(
-            onSuccess = { onDismiss() },
-            onFailure = { errorMessage = it.message ?: "Unknown error" },
-        )
-        currentDeferred = null
+    // Monitor job completion
+    LaunchedEffect(currentJob) {
+        currentJob?.join()
+        if (currentJob?.isCompleted == true && currentJob?.isCancelled == false) {
+            onDismiss()
+        }
+        currentJob = null
     }
 
     AlertDialog(
@@ -141,29 +136,19 @@ fun CompressContextDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
-
-                    // Failure from the previous attempt, if any
-                    errorMessage?.let { message ->
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
                 }
             }
         },
         confirmButton = {
             if (isLoading) {
                 TextButton(onClick = {
-                    currentDeferred?.cancel()
-                    currentDeferred = null
+                    currentJob?.cancel()
+                    currentJob = null
                 }) {
                     Text(stringResource(R.string.cancel))
                 }
             } else {
                 TextButton(onClick = {
-                    errorMessage = null
                     val targetTokens = targetTokensK.toIntOrNull()
                         ?.coerceIn(1, Int.MAX_VALUE / 1_000)
                         ?.toLong()
@@ -171,7 +156,7 @@ fun CompressContextDialog(
                         ?.coerceAtMost(Int.MAX_VALUE.toLong())
                         ?.toInt()
                         ?: defaultTargetTokens
-                    currentDeferred = onConfirm(additionalPrompt, targetTokens, keepRecentMessages)
+                    currentJob = onConfirm(additionalPrompt, targetTokens, keepRecentMessages)
                 }) {
                     Text(stringResource(R.string.confirm))
                 }

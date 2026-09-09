@@ -6,7 +6,6 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -41,7 +40,7 @@ import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
-import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.supportsToolCalling
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.ToolApprovalState
@@ -73,7 +72,6 @@ import me.rerere.rikkahub.data.ai.ContextCompactionPlanner
 import me.rerere.rikkahub.data.ai.ContextCompactionPresentation
 import me.rerere.rikkahub.data.ai.CompactedMessageView
 import me.rerere.rikkahub.data.ai.ContextCompactionView
-import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.LocalTools
 import me.rerere.rikkahub.data.ai.tools.createSearchTools
@@ -96,7 +94,6 @@ import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.AutoCompactionThresholdMode
-import me.rerere.rikkahub.data.datastore.DEFAULT_AUTO_MODEL_ID
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getAssistantById
@@ -133,15 +130,6 @@ private const val COMPACTION_TOTAL_TIMEOUT_MS = 8 * 60_000L
 private const val COMPACTION_MAX_REQUEST_OUTPUT_TOKENS = 16_384
 private const val MAX_PARALLEL_COMPACTION_REQUESTS = 4
 private const val MAX_FULL_CONTEXT_MAP_GROUPS = 8
-/**
- * Cap the automatic-compaction raw tail at half of the trigger threshold (after reserving room
- * for the summary itself). Landing right at the trigger means the very next tool result crosses
- * it again, forcing a brand-new summary - a new request prefix and therefore a full cache miss -
- * on almost every turn. Leaving this much headroom lets several turns reuse the same cached
- * prefix before compaction has to fire again.
- */
-private const val COMPACTION_TAIL_BUDGET_PERCENT = 50
-private const val MIN_AUTOMATIC_TAIL_BUDGET_TOKENS = 512
 /**
  * Streaming chunks can arrive once per token. Persisting every chunk rewrites all message nodes
  * and can throttle the provider, while persisting only at the end loses the visible response when
@@ -197,36 +185,6 @@ internal fun compactionContextLength(settings: Settings, model: Model): Int? =
     settings.getCompactionContextLength(model)
 
 /**
- * Resolve the model to compress against. `settings.compressModelId` defaults to (and is
- * user-selectable as) the "Auto" placeholder, a literal [Model] owned by the built-in
- * "Moataz Alaqami" provider, which ships disabled — so resolving it as a real model and then
- * discovering its provider is disabled used to surface as an opaque failure. Falls through, in
- * order: the configured model (unless it's the Auto placeholder or its provider is disabled),
- * the current chat model (same guard), then the first model belonging to any enabled provider.
- * Returns null only when none of those is usable.
- */
-internal fun resolveCompressionModel(settings: Settings): Model? {
-    fun Model.takeIfUsable(): Model? {
-        if (id == DEFAULT_AUTO_MODEL_ID) return null
-        val provider = findProvider(settings.providers) ?: return null
-        return if (provider.enabled) this else null
-    }
-
-    settings.findModelById(settings.compressModelId)?.takeIfUsable()?.let { return it }
-    settings.getCurrentChatModel()?.takeIfUsable()?.let { return it }
-    return settings.providers
-        .filter { it.enabled }
-        .flatMap { it.models }
-        .firstNotNullOfOrNull { it.takeIfUsable() }
-}
-
-/** Message for the compression failure thrown when [resolveCompressionModel] finds nothing
- *  usable, naming the setting so the resulting error card is actionable. */
-internal fun compressionModelUnavailableMessage(): String =
-    "No enabled provider is available for compression. Set a different model under " +
-        "\"Compress Model\" in Settings."
-
-/**
  * Locates the [UIMessagePart.Tool] with [toolCallId] anywhere in [conversation]'s message
  * nodes, across every message version in each node (not just the currently-selected
  * branch) - the same scope [ChatService.handleToolApproval] mutates. Returns null if no
@@ -268,33 +226,6 @@ internal fun replaceToolCallPart(
 }
 
 /**
- * Result for a non-advancing automatic-compaction boundary (see
- * [ChatService.createAutomaticCompaction]): keep the existing compaction as a no-op rather
- * than aborting the turn, unless there is none to fall back to. Pure so the no-op-vs-throw
- * split is unit-testable without constructing a [ChatService].
- */
-internal fun automaticCompactionNoOpResult(existingCompaction: ConversationCompaction?): ConversationCompaction =
-    existingCompaction
-        ?: throw IllegalStateException("No new messages available for automatic compaction")
-
-/**
- * Records [compaction] via [onCreated] only when it is non-null, then returns it unchanged.
- * [ChatService.createAutomaticCompaction] returns null for a no-op boundary rather than the
- * pre-existing compaction (see its kdoc), specifically so its callers can tell a no-op apart
- * from a freshly created compaction when populating
- * [me.rerere.rikkahub.data.ai.CompactedMessageView.newlyCreatedAutoCompaction] -- recording a
- * no-op there would attach a "context compacted" tool card announcing a compaction that never
- * happened. Pure so the capture rule is unit-testable without constructing a [ChatService].
- */
-internal fun recordAutoCompactionIfCreated(
-    compaction: ConversationCompaction?,
-    onCreated: (ConversationCompaction) -> Unit,
-): ConversationCompaction? {
-    compaction?.let(onCreated)
-    return compaction
-}
-
-/**
  * A turn "stalled" when it ended without producing text the user can read: a hard failure
  * (any error, including retry exhaustion), or a success whose final assistant message carries
  * only reasoning/tool parts (or a blank text part) with no non-blank [UIMessagePart.Text].
@@ -311,20 +242,6 @@ internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boo
     return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
 }
 
-internal fun createForkConversation(
-    source: Conversation,
-    messageNodes: List<MessageNode>,
-): Conversation = Conversation(
-    id = Uuid.random(),
-    assistantId = source.assistantId,
-    messageNodes = messageNodes,
-    customSystemPrompt = source.customSystemPrompt,
-    modeInjectionIds = source.modeInjectionIds,
-    lorebookIds = source.lorebookIds,
-    workspaceCwd = source.workspaceCwd,
-    folderId = source.folderId,
-)
-
 data class ChatError(
     val id: Uuid = Uuid.random(),
     val title: String? = null,
@@ -335,7 +252,7 @@ data class ChatError(
 )
 
 enum class ChatErrorSolution {
-    CheckFastModelSettings,
+    CheckTitleModelSettings,
 }
 
 private val inputTransformers by lazy {
@@ -364,7 +281,6 @@ class ChatService(
     private val conversationRepo: ConversationRepository,
     private val memoryRepository: MemoryRepository,
     private val generationHandler: GenerationHandler,
-    private val translationHandler: TranslationHandler,
     private val templateTransformer: TemplateTransformer,
     private val providerManager: ProviderManager,
     private val localTools: LocalTools,
@@ -616,7 +532,8 @@ class ChatService(
     }
 
     fun getProcessingStatusFlow(conversationId: Uuid): StateFlow<String?> {
-        return getOrCreateSession(conversationId).processingStatus
+        val session = sessions[conversationId] ?: return MutableStateFlow(null)
+        return session.processingStatus
     }
 
     fun getConversationJobs(): Flow<Map<Uuid, Job?>> {
@@ -1277,7 +1194,8 @@ class ChatService(
             )
         }
         mcpManager.getAllAvailableTools().forEach { (serverId, serverName, mcpTool) ->
-            val mcpToolName = me.rerere.rikkahub.data.ai.mcp.buildMcpToolName(serverId, serverName, mcpTool.name)
+            val serverSlug = serverId.toString().take(8).replace("-", "")
+            val mcpToolName = "mcp__" + serverSlug + "_" + serverName + "__" + mcpTool.name
             add(
                 Tool(
                     name = mcpToolName,
@@ -1345,7 +1263,7 @@ class ChatService(
             updateConversation(conversationId, initialConversation.copy(chatSuggestions = emptyList()))
 
             // memory tool
-            if (!model.abilities.contains(ModelAbility.TOOL)) {
+            if (!model.supportsToolCalling()) {
                 if (useExternalWebSearch || mcpManager.getAllAvailableTools().isNotEmpty()) {
                     addError(
                         IllegalStateException(context.getString(R.string.tools_warning)),
@@ -1370,23 +1288,13 @@ class ChatService(
                     processingStatus = session.processingStatus,
                 )
             } else {
-                // Regenerating an assistant message: request the compacted view clipped to this
-                // range so the request matches what a normal turn would have sent, instead of
-                // the full raw history (RC1). loadCompactedMessageView resolves and, if stale,
-                // clears the stored compaction exactly as the normal path does - reused here
-                // rather than duplicated.
-                ContextCompactionView.buildForRange(
-                    conversation = conversation,
-                    compaction = loadCompactedMessageView(conversation).compaction,
-                    endExclusive = messageRange.endInclusive + 1,
-                )
+                null
             }
             val messagesForGeneration = if (messageRange != null) {
-                compactedMessageView?.messages
-                    ?: conversation.currentMessages.subList(
-                        messageRange.start,
-                        messageRange.endInclusive + 1,
-                    )
+                conversation.currentMessages.subList(
+                    messageRange.start,
+                    messageRange.endInclusive + 1,
+                )
             } else {
                 compactedMessageView!!.messages
             }
@@ -1495,7 +1403,6 @@ class ChatService(
                 },
                 messages = messagesForGeneration,
                 assistant = assistant,
-                conversationId = conversationId,
                 conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
@@ -1564,12 +1471,16 @@ class ChatService(
                     }.forEach { (serverId, serverName, tool) ->
                         // Namespace MCP tools by a server-id slug so two enabled servers that
                         // each expose a tool of the same name don't collide (which would 400 or
-                        // mis-route to whichever server registered last). Built by the same
-                        // buildMcpToolName helper mcp_list_tools uses to advertise this name to
-                        // the model (#88), so the two can never drift. The execute lambda below
-                        // still calls callTool with the REAL tool.name, since the namespacing
-                        // exists only on the model-facing surface.
-                        val mcpToolName = me.rerere.rikkahub.data.ai.mcp.buildMcpToolName(serverId, serverName, tool.name)
+                        // mis-route to whichever server registered last). Keep the `mcp__` prefix
+                        // intact: HardlineCommandGuard and ToolApprovalDefaults both branch on
+                        // `startsWith("mcp__")`. The slug is the first 8 hex chars of the id with
+                        // dashes stripped; the validated server name follows for human-readable
+                        // disambiguation, keeping the name within the 64-char /
+                        // ^[a-zA-Z0-9_-]+$ limit. The execute lambda below still calls callTool
+                        // with the REAL tool.name, since the namespacing exists only on the
+                        // model-facing surface.
+                        val serverSlug = serverId.toString().take(8).replace("-", "")
+                        val mcpToolName = "mcp__" + serverSlug + "_" + serverName + "__" + tool.name
                         add(
                             Tool(
                                 name = mcpToolName,
@@ -1923,29 +1834,13 @@ class ChatService(
         }
         if (!shouldGenerate) return@withContext
 
-        val fallback = titleFallbackFrom(conversation.currentMessages)
-
-        suspend fun applyTitle(title: String?) {
-            if (title.isNullOrBlank()) return
-            // 生成完，conversation可能不是最新了，因此需要重新获取
-            conversationRepo.getConversationById(conversation.id)?.let {
-                if (shouldWriteTitle(force, it.title)) {
-                    saveConversation(conversationId, it.copy(title = title))
-                }
-            }
-        }
-
         runCatching {
             val settings = settingsStore.settingsFlow.first()
-            val model = settings.findModelById(settings.fastModelId)
-                ?: run { applyTitle(fallback); return@runCatching }
-            val provider = model.findProvider(settings.providers)
-                ?: run { applyTitle(fallback); return@runCatching }
+            val model = settings.findModelById(settings.titleModelId, fallback = settings.fastModelId)
+                ?: return@runCatching
+            val provider = model.findProvider(settings.providers) ?: return@runCatching
             // Same defence as handleLlmTurn: don't burn tokens on a disabled provider.
-            if (!provider.enabled) {
-                applyTitle(fallback)
-                return@runCatching
-            }
+            if (!provider.enabled) return@runCatching
 
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
@@ -1958,10 +1853,16 @@ class ChatService(
                                 .takeLast(4).joinToString("\n\n") { it.summaryAsText(maxLength = 500) })
                     ),
                 ),
-                params = backgroundTextGenerationParams(model, settings.fastModelReasoningLevel),
+                params = backgroundTextGenerationParams(model),
             )
 
-            applyTitle(result.message.toText().trim().ifBlank { fallback })
+            // 生成完，conversation可能不是最新了，因此需要重新获取
+            conversationRepo.getConversationById(conversation.id)?.let {
+                saveConversation(
+                    conversationId,
+                    it.copy(title = result.message.toText().trim())
+                )
+            }
         }.onFailure {
             // Title generation is auxiliary — a failure here doesn't block the chat
             // and surfaces visibly as a blank conversation title in the list. Don't
@@ -1970,8 +1871,6 @@ class ChatService(
             // and the user gets a popup per message until they switch models. Match
             // the generateSuggestion pattern (log only) to keep the surface quiet.
             Log.w(TAG, "generateTitle failed", it)
-            runCatching { applyTitle(fallback) }
-                .onFailure { e -> Log.w(TAG, "generateTitle fallback apply failed", e) }
         }
     }
 
@@ -1984,7 +1883,7 @@ class ChatService(
         runCatching {
             val settings = settingsStore.settingsFlow.first()
             if (!settings.enableSuggestion) return@runCatching
-            val model = settings.findModelById(settings.fastModelId)
+            val model = settings.findModelById(settings.suggestionModelId, fallback = settings.fastModelId)
                 ?: return@runCatching
             val provider = model.findProvider(settings.providers) ?: return@runCatching
             // Same defence as handleLlmTurn: don't burn tokens on a disabled provider.
@@ -2008,7 +1907,7 @@ class ChatService(
                                 .takeLast(8).joinToString("\n\n") { it.summaryAsText(maxLength = 500) }),
                     )
                 ),
-                params = backgroundTextGenerationParams(model, settings.fastModelReasoningLevel),
+                params = backgroundTextGenerationParams(model),
             )
             val suggestions =
                 result.message.toText().split("\n").map { it.trim() }
@@ -2083,38 +1982,25 @@ class ChatService(
                     val targetTokens = settings.getContextCompactionTargetTokens(
                         compactionContextLength(settings, model),
                     )
+                    val firstCompaction = createAutomaticCompaction(
+                        conversation = latestConversation,
+                        currentView = view,
+                        settings = settings,
+                        targetTokens = targetTokens,
+                        // A provider-reported context overflow means the local estimate missed
+                        // provider overhead (often a very large tool result or schema). Drop the
+                        // raw tail for this recovery pass so the continuation cannot immediately
+                        // submit the same oversized request again. The deterministic tool ledger
+                        // and the prose summary preserve the completed execution history, while
+                        // the original messages remain stored in the conversation.
+                        keepRecentToolCalls = if (compactEntireContext) {
+                            0
+                        } else {
+                            settings.autoCompactionKeepRecentToolCalls
+                        },
+                    )
+                    val firstView = ContextCompactionView.build(latestConversation, firstCompaction)
                     val triggerTokens = automaticCompactionTriggerTokens(settings, model)
-                    // Choose the tail boundary so the post-compaction request already lands
-                    // comfortably below the trigger, instead of accepting a tail that sits right
-                    // at it and re-summarizing on the next turn (see COMPACTION_TAIL_BUDGET_PERCENT).
-                    val maxTailTokens = triggerTokens?.let {
-                        (it * COMPACTION_TAIL_BUDGET_PERCENT / 100 - targetTokens)
-                            .coerceAtLeast(MIN_AUTOMATIC_TAIL_BUDGET_TOKENS)
-                    }
-                    val firstCompaction = recordAutoCompactionIfCreated(
-                        createAutomaticCompaction(
-                            conversation = latestConversation,
-                            currentView = view,
-                            settings = settings,
-                            targetTokens = targetTokens,
-                            // A provider-reported context overflow means the local estimate
-                            // missed provider overhead (often a very large tool result or
-                            // schema). Drop the raw tail for this recovery pass so the
-                            // continuation cannot immediately submit the same oversized request
-                            // again. The deterministic tool ledger and the prose summary
-                            // preserve the completed execution history, while the original
-                            // messages remain stored in the conversation.
-                            keepRecentToolCalls = if (compactEntireContext) {
-                                0
-                            } else {
-                                settings.autoCompactionKeepRecentToolCalls
-                            },
-                            maxTailTokens = maxTailTokens,
-                        ),
-                    ) { newlyCreatedAutoCompaction = it }
-                    val firstView = firstCompaction?.let {
-                        ContextCompactionView.build(latestConversation, it)
-                    } ?: view
                     if (
                         triggerTokens != null &&
                         firstView.rawTailStartIndex < latestConversation.messageNodes.size &&
@@ -2124,18 +2010,16 @@ class ChatService(
                             TAG,
                             "Automatic compaction tail still exceeds threshold; compacting the full active context",
                         )
-                        recordAutoCompactionIfCreated(
-                            createAutomaticCompaction(
-                                conversation = latestConversation,
-                                currentView = firstView,
-                                settings = settings,
-                                targetTokens = targetTokens,
-                                keepRecentToolCalls = 0,
-                            ),
-                        ) { newlyCreatedAutoCompaction = it } ?: firstView.compaction
+                        createAutomaticCompaction(
+                            conversation = latestConversation,
+                            currentView = firstView,
+                            settings = settings,
+                            targetTokens = targetTokens,
+                            keepRecentToolCalls = 0,
+                        )
                     } else {
-                        firstCompaction ?: view.compaction
-                    }
+                        firstCompaction
+                    }.also { newlyCreatedAutoCompaction = it }
                 }
             }
             val latestConversation = getConversationFlow(conversation.id).value
@@ -2183,21 +2067,13 @@ class ChatService(
         conversationRepo.clearCompaction(conversationId)
     }
 
-    /**
-     * Returns the freshly created compaction, or `null` when the tail boundary did not
-     * advance (a no-op -- see the check below). `null` lets callers tell a no-op apart from a
-     * real compaction, which matters for [CompactedMessageView.newlyCreatedAutoCompaction]:
-     * that field must stay unset for a no-op, or the UI attaches a "context compacted" card
-     * for a compaction that never happened.
-     */
     private suspend fun createAutomaticCompaction(
         conversation: Conversation,
         currentView: CompactedMessageView,
         settings: Settings,
         targetTokens: Int,
         keepRecentToolCalls: Int,
-        maxTailTokens: Int? = null,
-    ): ConversationCompaction? {
+    ): ConversationCompaction {
         if (conversation.messageNodes.size < 2) {
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
@@ -2206,7 +2082,6 @@ class ChatService(
             messages = conversation.currentMessages,
             rawTailStartIndex = currentView.rawTailStartIndex,
             keepRecentToolCalls = keepRecentToolCalls,
-            maxTailTokens = maxTailTokens,
         )
 
         // A subsequent compaction may legitimately consume the final raw tail message,
@@ -2215,28 +2090,12 @@ class ChatService(
         if (rawTailStartIndex !in 1..conversation.messageNodes.size) {
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
-        // The boundary can fail to advance even after the skip-guard one level up in
-        // handleAutomaticCompaction (e.g. a provider-reported boundary racing a tool result
-        // that has not been appended yet). That is a no-op, not a failure: keep the existing
-        // compaction unchanged instead of aborting the whole turn with an exception that
-        // propagates out of onAfterToolExecution. automaticCompactionNoOpResult still throws
-        // when there is no existing compaction to fall back to -- unreachable in practice (it
-        // would require rawTailStartIndex == 0 in a conversation that already passed the
-        // messageNodes.size < 2 guard above), but the return type demands a decision. Return
-        // null rather than that existing compaction: the caller cannot otherwise tell this
-        // no-op apart from a freshly created compaction (see the kdoc above).
-        if (rawTailStartIndex <= currentView.rawTailStartIndex) {
-            Log.i(
-                TAG,
-                "Automatic compaction no-op for ${conversation.id}: rawTailStartIndex=$rawTailStartIndex " +
-                    "did not advance past currentView.rawTailStartIndex=${currentView.rawTailStartIndex}",
-            )
-            automaticCompactionNoOpResult(currentView.compaction)
-            return null
+        check(rawTailStartIndex > currentView.rawTailStartIndex) {
+            "No new messages available for automatic compaction"
         }
 
         val messagesToCompress = buildList {
-            currentView.compaction?.let { add(ContextCompactionView.summaryMessage(it)) }
+            currentView.compaction?.let { add(UIMessage.user(it.summary)) }
             addAll(
                 conversation.currentMessages.subList(
                     currentView.rawTailStartIndex,
@@ -2329,7 +2188,7 @@ class ChatService(
                     requestedTailStart,
                 )
                 val messagesToCompress = buildList {
-                    currentView.compaction?.let { add(ContextCompactionView.summaryMessage(it)) }
+                    currentView.compaction?.let { add(UIMessage.user(it.summary)) }
                     addAll(
                         allMessages.subList(
                             currentView.rawTailStartIndex,
@@ -2376,7 +2235,7 @@ class ChatService(
         additionalPrompt: String,
         targetTokens: Int,
         keepRecentMessages: Int = 32,
-    ): Deferred<Result<Unit>> = appScope.async {
+    ): Job = appScope.launch {
         compressConversation(
             conversationId = conversationId,
             conversation = conversation,
@@ -2406,13 +2265,12 @@ class ChatService(
             "Invalid compaction boundary"
         }
 
-        val model = resolveCompressionModel(settings)
-            ?: throw IllegalStateException(compressionModelUnavailableMessage())
+        val model = settings.findModelById(settings.compressModelId)
+            ?: settings.getCurrentChatModel()
+            ?: throw IllegalStateException("No model available for compression")
         val provider = model.findProvider(settings.providers)
             ?: throw IllegalStateException("Provider not found")
         // Same defence as handleLlmTurn — refuse to compress against a disabled provider.
-        // resolveCompressionModel already skips disabled providers, so this only guards against
-        // a provider being disabled between resolution and this point.
         if (!provider.enabled) {
             throw IllegalStateException(
                 "Provider '${provider.name}' is disabled — cannot compress. " +
@@ -2971,7 +2829,7 @@ class ChatService(
                 val loadingText = context.getString(R.string.translating)
                 updateTranslationField(conversationId, message.id, loadingText)
 
-                translationHandler.translateText(
+                generationHandler.translateText(
                     settings = settings,
                     sourceText = messageText,
                     targetLanguage = targetLanguage
@@ -3083,7 +2941,14 @@ class ChatService(
                 )
             }
 
-        val forkConversation = createForkConversation(currentConversation, copiedNodes)
+        val forkConversation = Conversation(
+            id = Uuid.random(),
+            assistantId = currentConversation.assistantId,
+            messageNodes = copiedNodes,
+            customSystemPrompt = currentConversation.customSystemPrompt,
+            modeInjectionIds = currentConversation.modeInjectionIds,
+            lorebookIds = currentConversation.lorebookIds,
+        )
 
         saveConversation(forkConversation.id, forkConversation)
         return forkConversation

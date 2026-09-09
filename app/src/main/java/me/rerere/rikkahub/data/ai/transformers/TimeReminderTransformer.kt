@@ -67,7 +67,7 @@ private fun buildTimeReminderMessage(gapSeconds: Long?, instant: Instant): UIMes
     } else {
         "<time_reminder>Current time: $dayOfWeek, $timeStr</time_reminder>"
     }
-    return UIMessage.user(content).copy(isSynthetic = true)
+    return UIMessage.user(content)
 }
 
 private fun formatGap(seconds: Long): String {

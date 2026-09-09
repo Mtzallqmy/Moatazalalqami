@@ -44,7 +44,7 @@ class BugReportBuilder(private val context: Context) {
     suspend fun build(): File = withContext(Dispatchers.IO) {
         val ts = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val outDir = File(context.cacheDir, "bug_reports").apply { mkdirs() }
-        val zipFile = File(outDir, "rikkahub-agent-bug-$ts.zip")
+        val zipFile = File(outDir, "moataz-alaqami-bug-$ts.zip")
 
         ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
             zip.putEntry("meta.txt", buildMeta())
@@ -62,7 +62,7 @@ class BugReportBuilder(private val context: Context) {
     }
 
     private fun buildMeta(): String = buildString {
-        append("App: rikkahub-agent\n")
+        append("App: Moataz Alaqami\n")
         append("Version: ${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})\n")
         append("Build type: ${BuildConfig.BUILD_TYPE}\n")
         append("Application ID: ${BuildConfig.APPLICATION_ID}\n")
@@ -75,7 +75,7 @@ class BugReportBuilder(private val context: Context) {
 
     private fun buildReadme(): String =
         """
-        rikkahub-agent bug report
+        Moataz Alaqami bug report
         =========================
 
         This ZIP was generated locally on the device. It contains:
@@ -120,6 +120,9 @@ class BugReportBuilder(private val context: Context) {
  */
 object SecretRedactor {
 
+    private val knownSecrets = java.util.concurrent.CopyOnWriteArrayList<String>()
+    private val knownFingerprints = java.util.concurrent.CopyOnWriteArraySet<String>()
+
     private val patterns: List<Pair<Regex, String>> = listOf(
         // Telegram bot tokens: <int>:<35-char alnum>
         Regex("""\b\d{8,12}:[A-Za-z0-9_-]{30,40}\b""") to "[redacted-telegram-token]",
@@ -136,13 +139,26 @@ object SecretRedactor {
         Regex("""\b[A-Za-z0-9+/]{30,}={0,2}\b""") to "[redacted-b64]",
         // ssh:// or sftp:// urls with embedded creds
         Regex("""(ssh|sftp)://[^\s/@]+@""") to "$1://[redacted]@",
+        Regex("""\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[opusr]_[A-Za-z0-9]{20,})\b""") to "[redacted-github-token]",
+        Regex("""(?is)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----""") to "[redacted-private-key]",
     )
+
+    fun registerKnownSecret(secret: CharArray) {
+        val value = secret.concatToString()
+        if (value.length < 8) return
+        if (!knownSecrets.contains(value)) knownSecrets += value
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
+        knownFingerprints += digest.take(8).joinToString("") { "%02x".format(it) }
+    }
+
+    fun fingerprints(): Set<String> = knownFingerprints.toSet()
 
     fun redact(input: String): String {
         var out = input
         for ((re, replacement) in patterns) {
             out = re.replace(out, replacement)
         }
+        knownSecrets.forEach { secret -> out = out.replace(secret, "[redacted-known-secret]") }
         return out
     }
 }

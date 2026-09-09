@@ -19,12 +19,10 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.oauth.CustomTabsOAuthAuthorizationLauncher
-import me.rerere.oauth.OAuthHttpClient
-import me.rerere.oauth.OAuthLoopbackCallbackServer
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.saveUploadFromBytes
 import me.rerere.rikkahub.utils.JsonInstant
@@ -43,6 +41,7 @@ class McpManager(
     private val settingsStore: SettingsStore,
     private val appScope: AppScope,
     private val filesManager: FilesManager,
+    appEventBus: AppEventBus,
 ) {
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -66,17 +65,11 @@ class McpManager(
     }
 
     private val statusStore = McpStatusStore()
-    private val oauthCallbackServer = OAuthLoopbackCallbackServer(
-        port = MCP_OAUTH_CALLBACK_PORT,
-        callbackPath = MCP_OAUTH_CALLBACK_PATH,
-    )
     private val oauthCoordinator = McpOAuthCoordinator(
         settingsStore = settingsStore,
         appScope = appScope,
-        oauthClient = OAuthHttpClient(okHttpClient),
-        discoveryClient = McpOAuthDiscoveryClient(okHttpClient),
-        callbackServer = oauthCallbackServer,
-        authorizationLauncher = CustomTabsOAuthAuthorizationLauncher,
+        appEventBus = appEventBus,
+        oauthClient = McpOAuthClient(okHttpClient),
         updateStatus = statusStore::update,
     )
     private val sessionRegistry = McpSessionRegistry(
@@ -164,19 +157,4 @@ class McpManager(
         )
         return UIMessagePart.Image(url = filesManager.getFile(entity).toUri().toString())
     }
-}
-
-/**
- * Build the model-facing dispatchable name for one MCP tool:
- * `mcp__<slug>_<serverName>__<toolName>`. Shared by the tool-registration path (ChatService's
- * inline tool assembly + rerun path) and the mcp_list_tools diagnostic listing
- * (McpControlTools) so the two can never drift (#88) — a name shown to the model as "this is
- * what you call" must be byte-identical to the name the dispatch table was actually built
- * with. Keep the `mcp__` prefix intact: HardlineCommandGuard and ToolApprovalDefaults both
- * branch on `startsWith("mcp__")`. The slug is the first 8 hex chars of the server id with
- * dashes stripped, so two identically-named servers never collide. Pure.
- */
-fun buildMcpToolName(serverId: Uuid, serverName: String, toolName: String): String {
-    val serverSlug = serverId.toString().take(8).replace("-", "")
-    return "mcp__" + serverSlug + "_" + serverName + "__" + toolName
 }

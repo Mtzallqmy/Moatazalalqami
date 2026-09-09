@@ -62,7 +62,7 @@ suspend fun createWorkspaceTools(
         createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
         createBackgroundStatusTool(workspaceId, ::needsApproval, workspaceRepository),
         createBackgroundKillTool(workspaceId, ::needsApproval, workspaceRepository),
-    )
+    ) + createGitWorkspaceTools(workspaceId, workspaceRepository)
 }
 
 private val IMAGE_EXTENSIONS = setOf(

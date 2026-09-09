@@ -989,9 +989,9 @@ private fun ModelPicker(
                                     }
                                 ) {
                                     if (selectedModels.any { model -> model.modelId == it.modelId }) {
-                                        Icon(HugeIcons.Cancel01, stringResource(R.string.delete))
+                                        Icon(HugeIcons.Cancel01, null)
                                     } else {
-                                        Icon(HugeIcons.Add01, stringResource(R.string.add))
+                                        Icon(HugeIcons.Add01, null)
                                     }
                                 }
                             }
@@ -1026,7 +1026,7 @@ private fun ModelPicker(
                 showModal = true
             }
         ) {
-            Icon(HugeIcons.Package01, stringResource(R.string.setting_model_page_title))
+            Icon(HugeIcons.Package01, null)
         }
     }
 }

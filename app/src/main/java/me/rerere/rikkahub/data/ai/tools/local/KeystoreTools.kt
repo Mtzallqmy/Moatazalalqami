@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
@@ -43,6 +44,56 @@ private fun ksErr(msg: String) =
 
 private fun b64encode(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
 private fun b64decode(s: String): ByteArray = Base64.getDecoder().decode(s)
+
+private fun generateRsaKey(alias: String) {
+    val baseSpec = KeyGenParameterSpec.Builder(
+        alias,
+        KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+    )
+        .setDigests(KeyProperties.DIGEST_SHA256)
+        .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+        .setKeySize(2048)
+    val generator = KeyPairGenerator.getInstance(
+        KeyProperties.KEY_ALGORITHM_RSA,
+        ANDROID_KEYSTORE,
+    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        try {
+            generator.initialize(baseSpec.setIsStrongBoxBacked(true).build())
+            generator.generateKeyPair()
+            return
+        } catch (_: StrongBoxUnavailableException) {
+            // The device has no StrongBox. Reinitialize below using the regular TEE.
+        }
+    }
+    generator.initialize(baseSpec.build())
+    generator.generateKeyPair()
+}
+
+private fun generateAesKey(alias: String) {
+    val baseSpec = KeyGenParameterSpec.Builder(
+        alias,
+        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+    )
+        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setKeySize(256)
+    val generator = KeyGenerator.getInstance(
+        KeyProperties.KEY_ALGORITHM_AES,
+        ANDROID_KEYSTORE,
+    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        try {
+            generator.init(baseSpec.setIsStrongBoxBacked(true).build())
+            generator.generateKey()
+            return
+        } catch (_: StrongBoxUnavailableException) {
+            // The device has no StrongBox. Reinitialize below using the regular TEE.
+        }
+    }
+    generator.init(baseSpec.build())
+    generator.generateKey()
+}
 
 private fun loadKeyStore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
@@ -137,44 +188,8 @@ fun keystoreGenerateKeyTool(): Tool = Tool(
 
         return@Tool try {
             when (type) {
-                "rsa_2048" -> {
-                    val spec = KeyGenParameterSpec.Builder(
-                        alias!!,
-                        KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
-                    )
-                        .setDigests(KeyProperties.DIGEST_SHA256)
-                        .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-                        .setKeySize(2048)
-                    val gen = KeyPairGenerator.getInstance(
-                        KeyProperties.KEY_ALGORITHM_RSA, ANDROID_KEYSTORE
-                    )
-                    try {
-                        gen.initialize(spec.setIsStrongBoxBacked(true).build())
-                        gen.generateKeyPair()
-                    } catch (_: StrongBoxUnavailableException) {
-                        gen.initialize(spec.setIsStrongBoxBacked(false).build())
-                        gen.generateKeyPair()
-                    }
-                }
-                "aes_256_gcm" -> {
-                    val spec = KeyGenParameterSpec.Builder(
-                        alias!!,
-                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-                    )
-                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                        .setKeySize(256)
-                    val gen = KeyGenerator.getInstance(
-                        KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE
-                    )
-                    try {
-                        gen.init(spec.setIsStrongBoxBacked(true).build())
-                        gen.generateKey()
-                    } catch (_: StrongBoxUnavailableException) {
-                        gen.init(spec.setIsStrongBoxBacked(false).build())
-                        gen.generateKey()
-                    }
-                }
+                "rsa_2048" -> generateRsaKey(alias!!)
+                "aes_256_gcm" -> generateAesKey(alias!!)
             }
             listOf(UIMessagePart.Text(buildJsonObject {
                 put("alias", alias)

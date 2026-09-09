@@ -7,24 +7,19 @@ plugins {
 val webUiDir = rootProject.layout.projectDirectory.dir("web-ui")
 val webStaticResourcesDir = layout.projectDirectory.dir("src/main/resources/static")
 
-// Install web-ui dependencies. The tracked lockfile is pnpm-lock.yaml; bun
-// migrates it into bun.lock on a clean checkout and reuses those pins, so
-// both are inputs. Up-to-date when neither has changed since the last
-// successful install, so it's a no-op on every build after the first.
-// Without this step, the buildWebUi task fails on a clean checkout with
-// `react-router: command not found` until someone manually runs
-// `bun install` in web-ui/.
+// Install exactly the dependency graph recorded in the tracked pnpm lockfile.
+// Keeping one package manager in the production path avoids lockfile migration
+// and makes local and CI builds deterministic.
 val installWebUiDeps = tasks.register<Exec>("installWebUiDeps") {
     group = "build"
-    description = "Install web-ui dependencies via bun if the lockfile changed."
+    description = "Install locked web-ui dependencies via pnpm."
 
     workingDir = webUiDir.asFile
-    commandLine("bun", "install", "--frozen-lockfile")
+    commandLine("pnpm", "install", "--frozen-lockfile")
 
     inputs.files(
         webUiDir.file("package.json"),
-        webUiDir.file("pnpm-lock.yaml"),
-        webUiDir.file("bun.lock")
+        webUiDir.file("pnpm-lock.yaml")
     )
     outputs.dir(webUiDir.dir("node_modules"))
 }
@@ -46,7 +41,7 @@ val buildWebUi = tasks.register<Exec>("buildWebUi") {
         webUiDir.file("package.json"),
         webUiDir.file("pnpm-lock.yaml"),
         webUiDir.file("components.json"),
-        webUiDir.file("copy.ts"),
+        webUiDir.file("copy.mjs"),
         webUiDir.file("react-router.config.ts"),
         webUiDir.file("tsconfig.json"),
         webUiDir.file("vite.config.ts"),

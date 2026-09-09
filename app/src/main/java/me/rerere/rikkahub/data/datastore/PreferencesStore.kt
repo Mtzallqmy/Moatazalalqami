@@ -2,9 +2,7 @@ package me.rerere.rikkahub.data.datastore
 
 import android.content.Context
 import android.util.Log
-import androidx.datastore.core.DataStore
 import androidx.datastore.core.IOException
-import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.SharedPreferencesMigration
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -45,6 +43,8 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.DEFAULT_AGENT_LOCAL_TOOLS
+import me.rerere.rikkahub.data.ai.tools.LocalToolOption
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.InjectionPosition
 import me.rerere.rikkahub.data.model.Lorebook
@@ -143,16 +143,16 @@ class SettingsStore(
         val THEME_ID = stringPreferencesKey("theme_id")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
-        val NETWORK_SETTING = stringPreferencesKey("network_setting")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
 
         // 模型选择
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
         val SELECT_MODEL = stringPreferencesKey("chat_model")
         val FAST_MODEL = stringPreferencesKey("fast_model")
-        val FAST_MODEL_REASONING_LEVEL = stringPreferencesKey("fast_model_reasoning_level")
+        val TITLE_MODEL = stringPreferencesKey("title_model")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
         val ENABLE_SUGGESTION = booleanPreferencesKey("enable_suggestion")
+        val SUGGESTION_MODEL = stringPreferencesKey("suggestion_model")
         val IMAGE_GENERATION_MODEL = stringPreferencesKey("image_generation_model")
         val TITLE_PROMPT = stringPreferencesKey("title_prompt")
         val TRANSLATION_PROMPT = stringPreferencesKey("translation_prompt")
@@ -175,9 +175,6 @@ class SettingsStore(
         // IDs of built-in providers the user explicitly deleted; the re-seed pass
         // skips these so deletions are sticky across app restarts.
         val DELETED_BUILTIN_PROVIDER_IDS = stringPreferencesKey("deleted_builtin_provider_ids")
-        // Names of bundled skills the user explicitly deleted; the seed pass skips these
-        // (see Settings.deletedBundledSkills). Missing key -> emptySet(), no migration.
-        val DELETED_BUNDLED_SKILLS = stringPreferencesKey("deleted_bundled_skills")
 
         // 助手
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
@@ -234,102 +231,6 @@ class SettingsStore(
 
         // 赞助提醒
         val SPONSOR_ALERT_DISMISSED_AT = intPreferencesKey("sponsor_alert_dismissed_at")
-
-        // Uses the same DataStore singleton without starting settings flows or requiring Koin.
-        internal suspend fun restoreBeforeInitialization(context: Context, settings: Settings) {
-            require(!settings.init) { "Cannot restore uninitialized settings" }
-            persistSettings(context.settingsStore, settings)
-        }
-
-        private suspend fun persistSettings(dataStore: DataStore<Preferences>, settings: Settings) {
-            dataStore.edit { preferences ->
-                preferences[DYNAMIC_COLOR] = settings.dynamicColor
-                preferences[THEME_ID] = settings.themeId
-                preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
-                preferences[DEVELOPER_MODE] = settings.developerMode
-                preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(
-                    settings.displaySetting.copy(
-                        pasteLongTextThreshold = settings.displaySetting.pasteLongTextThreshold.coerceIn(100, 10000)
-                    )
-                )
-                preferences[NETWORK_SETTING] = JsonInstant.encodeToString(settings.networkSetting)
-
-                preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
-                preferences[SELECT_MODEL] = settings.chatModelId.toString()
-                preferences[FAST_MODEL] = settings.fastModelId.toString()
-                preferences[FAST_MODEL_REASONING_LEVEL] = settings.fastModelReasoningLevel.name
-                preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
-                preferences[ENABLE_SUGGESTION] = settings.enableSuggestion
-                preferences[IMAGE_GENERATION_MODEL] = settings.imageGenerationModelId.toString()
-                preferences[TITLE_PROMPT] = settings.titlePrompt
-                preferences[TRANSLATION_PROMPT] = settings.translatePrompt
-                preferences[TRANSLATE_THINKING_BUDGET] = settings.translateThinkingBudget
-                preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
-                preferences[OCR_MODEL] = settings.ocrModelId.toString()
-                preferences[OCR_PROMPT] = settings.ocrPrompt
-                preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
-                preferences[COMPRESS_PROMPT] = settings.compressPrompt
-                preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
-                preferences[AUTO_COMPACTION_THRESHOLD_MODE] = settings.autoCompactionThresholdMode.name
-                preferences[AUTO_COMPACTION_THRESHOLD_PERCENT] =
-                    settings.autoCompactionThresholdPercent.coerceIn(5, 95)
-                preferences[AUTO_COMPACTION_THRESHOLD_TOKENS_K] =
-                    settings.autoCompactionThresholdTokensK.coerceIn(1, Int.MAX_VALUE / 1_000)
-                preferences[AUTO_COMPACTION_KEEP_RECENT_TOOL_CALLS] =
-                    settings.autoCompactionKeepRecentToolCalls.coerceIn(0, 1_000)
-                settings.contextCompactionTargetTokensK?.let { targetTokensK ->
-                    preferences[CONTEXT_COMPACTION_TARGET_TOKENS_K] =
-                        targetTokensK.coerceIn(1, Int.MAX_VALUE / 1_000)
-                } ?: preferences.remove(CONTEXT_COMPACTION_TARGET_TOKENS_K)
-                preferences[RESPONSE_STREAM_MAX_RETRIES] = settings.responseStreamMaxRetries.coerceIn(0, 10)
-
-                preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
-                preferences[DELETED_BUILTIN_PROVIDER_IDS] = JsonInstant.encodeToString(
-                    settings.deletedBuiltInProviderIds.map { it.toString() }.toSet()
-                )
-                preferences[DELETED_BUNDLED_SKILLS] = JsonInstant.encodeToString(settings.deletedBundledSkills)
-
-                preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
-                preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
-                preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
-
-                preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
-                preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
-                // maxOf(0, size - 1) guards the empty-list case: a persisted "[]" for
-                // search_services leaves searchServices empty (the ?: default only fires on a
-                // missing key, not on an empty array), and coerceIn(0, -1) throws
-                // IllegalArgumentException because min > max, crashing every settings write.
-                preferences[SEARCH_SELECTED] =
-                    settings.searchServiceSelected.coerceIn(0, maxOf(0, settings.searchServices.size - 1))
-                preferences[ENABLE_WEB_FETCH_TOOLS] = settings.enableWebFetchTools
-
-                preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
-                preferences[SUB_AGENTS] = JsonInstant.encodeToString(settings.subAgents)
-                preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
-                preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
-                preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
-                settings.selectedTTSProviderId?.let {
-                    preferences[SELECTED_TTS_PROVIDER] = it.toString()
-                } ?: preferences.remove(SELECTED_TTS_PROVIDER)
-                preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
-                preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
-                settings.selectedASRProviderId?.let {
-                    preferences[SELECTED_ASR_PROVIDER] = it.toString()
-                } ?: preferences.remove(SELECTED_ASR_PROVIDER)
-                preferences[MODE_INJECTIONS] = JsonInstant.encodeToString(settings.modeInjections)
-                preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
-                preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
-                preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
-                preferences[WEB_SERVER_PORT] = settings.webServerPort
-                preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
-                preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
-                preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
-                preferences[AI_LOG_LEVEL] = settings.aiLogLevel.preferenceName
-                preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
-                preferences[LAUNCH_COUNT] = settings.launchCount
-                preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
-            }
-        }
     }
 
     private val dataStore = context.settingsStore
@@ -353,12 +254,11 @@ class SettingsStore(
                     ?: DEFAULT_AUTO_MODEL_ID,
                 fastModelId = preferences[FAST_MODEL]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
                     ?: DEFAULT_AUTO_MODEL_ID,
-                fastModelReasoningLevel = preferences[FAST_MODEL_REASONING_LEVEL]
-                    ?.let { value -> ReasoningLevel.entries.find { it.name == value } }
-                    ?: ReasoningLevel.AUTO,
+                titleModelId = preferences[TITLE_MODEL]?.let { runCatching { Uuid.parse(it) }.getOrNull() },
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
                     ?: DEFAULT_AUTO_MODEL_ID,
                 enableSuggestion = preferences[ENABLE_SUGGESTION] != false,
+                suggestionModelId = preferences[SUGGESTION_MODEL]?.let { runCatching { Uuid.parse(it) }.getOrNull() },
                 imageGenerationModelId = preferences[IMAGE_GENERATION_MODEL]?.let { runCatching { Uuid.parse(it) }.getOrNull() } ?: Uuid.random(),
                 titlePrompt = preferences[TITLE_PROMPT] ?: DEFAULT_TITLE_PROMPT,
                 translatePrompt = preferences[TRANSLATION_PROMPT] ?: DEFAULT_TRANSLATION_PROMPT,
@@ -399,12 +299,6 @@ class SettingsStore(
                                 .toSet()
                         }.getOrNull()
                     } ?: emptySet(),
-                deletedBundledSkills = preferences[DELETED_BUNDLED_SKILLS]?.let { raw ->
-                    runCatching { JsonInstant.decodeFromString<Set<String>>(raw) }.getOrElse {
-                        Log.w(TAG, "Failed to decode deletedBundledSkills, using default", it)
-                        emptySet()
-                    }
-                } ?: emptySet(),
                 assistants = runCatching {
                     JsonInstant.decodeFromString<List<Assistant>>(preferences[ASSISTANTS] ?: "[]")
                 }.getOrElse {
@@ -425,12 +319,6 @@ class SettingsStore(
                 }.getOrElse {
                     Log.w(TAG, "Failed to decode displaySetting, using default", it)
                     DisplaySetting()
-                },
-                networkSetting = runCatching {
-                    JsonInstant.decodeFromString<NetworkSetting>(preferences[NETWORK_SETTING] ?: "{}")
-                }.getOrElse {
-                    Log.w(TAG, "Failed to decode networkSetting, using default", it)
-                    NetworkSetting()
                 },
                 searchServices = preferences[SEARCH_SERVICES]?.let { raw ->
                     runCatching { JsonInstant.decodeFromString<List<SearchServiceOptions>>(raw) }.getOrElse {
@@ -588,6 +476,14 @@ class SettingsStore(
                     assistant.copy(enabledSkills = setOf("agent-core"))
                 } else assistant
             }.toMutableList()
+            // Upgrade the old untouched TimeInfo-only assistant default to the AL Agent tool
+            // profile. Any non-default tool selection is treated as an explicit user choice and
+            // preserved, so upgrades never re-enable tools a user intentionally disabled.
+            assistants = assistants.map { assistant ->
+                if (assistant.localTools == listOf(LocalToolOption.TimeInfo)) {
+                    assistant.copy(localTools = DEFAULT_AGENT_LOCAL_TOOLS)
+                } else assistant
+            }.toMutableList()
             // One-shot additive enable for newly-bundled default-on skills. Each name is added
             // to every default assistant exactly once, tracked in autoEnabledDefaultSkills, so a
             // user who later disables one is not re-opted-in on the next launch. A brand-new
@@ -721,7 +617,96 @@ class SettingsStore(
      * back on the next app launch.
      */
     private suspend fun updateInternal(settings: Settings) {
-        persistSettings(dataStore, settings)
+        dataStore.edit { preferences ->
+            preferences[DYNAMIC_COLOR] = settings.dynamicColor
+            preferences[THEME_ID] = settings.themeId
+            preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
+            preferences[DEVELOPER_MODE] = settings.developerMode
+            preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(
+                settings.displaySetting.copy(
+                    pasteLongTextThreshold = settings.displaySetting.pasteLongTextThreshold.coerceIn(100, 10000)
+                )
+            )
+
+            preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
+            preferences[SELECT_MODEL] = settings.chatModelId.toString()
+            preferences[FAST_MODEL] = settings.fastModelId.toString()
+            settings.titleModelId?.let {
+                preferences[TITLE_MODEL] = it.toString()
+            } ?: preferences.remove(TITLE_MODEL)
+            preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
+            preferences[ENABLE_SUGGESTION] = settings.enableSuggestion
+            settings.suggestionModelId?.let {
+                preferences[SUGGESTION_MODEL] = it.toString()
+            } ?: preferences.remove(SUGGESTION_MODEL)
+            preferences[IMAGE_GENERATION_MODEL] = settings.imageGenerationModelId.toString()
+            preferences[TITLE_PROMPT] = settings.titlePrompt
+            preferences[TRANSLATION_PROMPT] = settings.translatePrompt
+            preferences[TRANSLATE_THINKING_BUDGET] = settings.translateThinkingBudget
+            preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
+            preferences[OCR_MODEL] = settings.ocrModelId.toString()
+            preferences[OCR_PROMPT] = settings.ocrPrompt
+            preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
+            preferences[COMPRESS_PROMPT] = settings.compressPrompt
+            preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
+            preferences[AUTO_COMPACTION_THRESHOLD_MODE] = settings.autoCompactionThresholdMode.name
+            preferences[AUTO_COMPACTION_THRESHOLD_PERCENT] =
+                settings.autoCompactionThresholdPercent.coerceIn(5, 95)
+            preferences[AUTO_COMPACTION_THRESHOLD_TOKENS_K] =
+                settings.autoCompactionThresholdTokensK.coerceIn(1, Int.MAX_VALUE / 1_000)
+            preferences[AUTO_COMPACTION_KEEP_RECENT_TOOL_CALLS] =
+                settings.autoCompactionKeepRecentToolCalls.coerceIn(0, 1_000)
+            settings.contextCompactionTargetTokensK?.let { targetTokensK ->
+                preferences[CONTEXT_COMPACTION_TARGET_TOKENS_K] =
+                    targetTokensK.coerceIn(1, Int.MAX_VALUE / 1_000)
+            } ?: preferences.remove(CONTEXT_COMPACTION_TARGET_TOKENS_K)
+            preferences[RESPONSE_STREAM_MAX_RETRIES] = settings.responseStreamMaxRetries.coerceIn(0, 10)
+
+            preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
+            preferences[DELETED_BUILTIN_PROVIDER_IDS] = JsonInstant.encodeToString(
+                settings.deletedBuiltInProviderIds.map { it.toString() }.toSet()
+            )
+
+            preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
+            preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
+            preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+
+            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
+            preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
+            // maxOf(0, size - 1) guards the empty-list case: a persisted "[]" for
+            // search_services leaves searchServices empty (the ?: default only fires on a
+            // missing key, not on an empty array), and coerceIn(0, -1) throws
+            // IllegalArgumentException because min > max, crashing every settings write.
+            preferences[SEARCH_SELECTED] =
+                settings.searchServiceSelected.coerceIn(0, maxOf(0, settings.searchServices.size - 1))
+            preferences[ENABLE_WEB_FETCH_TOOLS] = settings.enableWebFetchTools
+
+            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+            preferences[SUB_AGENTS] = JsonInstant.encodeToString(settings.subAgents)
+            preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
+            preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
+            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
+            settings.selectedTTSProviderId?.let {
+                preferences[SELECTED_TTS_PROVIDER] = it.toString()
+            } ?: preferences.remove(SELECTED_TTS_PROVIDER)
+            preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
+            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
+            settings.selectedASRProviderId?.let {
+                preferences[SELECTED_ASR_PROVIDER] = it.toString()
+            } ?: preferences.remove(SELECTED_ASR_PROVIDER)
+            preferences[MODE_INJECTIONS] = JsonInstant.encodeToString(settings.modeInjections)
+            preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
+            preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
+            preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
+            preferences[WEB_SERVER_PORT] = settings.webServerPort
+            preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
+            preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
+            preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
+            preferences[AI_LOG_LEVEL] = settings.aiLogLevel.preferenceName
+            preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
+            preferences[LAUNCH_COUNT] = settings.launchCount
+            preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
+        }
         settingsFlow.value = settings
     }
 
@@ -837,17 +822,17 @@ data class Settings(
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
     val displaySetting: DisplaySetting = DisplaySetting(),
-    val networkSetting: NetworkSetting = NetworkSetting(),
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val fastModelId: Uuid = Uuid.random(),
-    val fastModelReasoningLevel: ReasoningLevel = ReasoningLevel.AUTO,
+    val titleModelId: Uuid? = null,
     val imageGenerationModelId: Uuid = Uuid.random(),
     val titlePrompt: String = DEFAULT_TITLE_PROMPT,
     val translateModeId: Uuid = Uuid.random(),
     val translatePrompt: String = DEFAULT_TRANSLATION_PROMPT,
     val translateThinkingBudget: Int = 0,
     val enableSuggestion: Boolean = true,
+    val suggestionModelId: Uuid? = null,
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     val ocrModelId: Uuid = Uuid.random(),
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
@@ -883,14 +868,6 @@ data class Settings(
      * never re-added, so toggling it off sticks across launches.
      */
     val autoEnabledDefaultSkills: Set<String> = emptySet(),
-    /**
-     * Names of bundled skills the user explicitly deleted via [SkillManager.deleteSkill].
-     * Recorded outside the skill directory (deletion wipes that directory, sentinel and
-     * all), so [SkillManager.seedDefaultSkillsIfNeeded] can tell "never seeded" apart from
-     * "seeded, then deleted" and skip re-creating it. A deliberate reinstall through the
-     * skill catalog removes the name again.
-     */
-    val deletedBundledSkills: Set<String> = emptySet(),
     val assistantTags: List<Tag> = emptyList(),
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
@@ -942,15 +919,6 @@ enum class AiLogLevel(val preferenceName: String) {
         fun fromPreference(value: String?): AiLogLevel = entries.firstOrNull { it.preferenceName == value } ?: INFO
     }
 }
-
-@Serializable
-data class NetworkSetting(
-    val userAgent: String = "",
-    val proxyUrl: String = "",
-    val proxyUsername: String = "",
-    val proxyPassword: String = "",
-    val enableAutoRetry: Boolean = true,
-)
 
 @Serializable
 enum class ChatFontFamily {

@@ -63,8 +63,8 @@ internal fun createWorkspaceTerminalSession(
         "LANG=C.UTF-8",
         "LC_ALL=C.UTF-8",
         "USER=root",
-        "SHELL=/bin/bash",
-        "/bin/bash",
+        "SHELL=/bin/sh",
+        "/bin/sh",
     )
 
     val env = arrayOf(

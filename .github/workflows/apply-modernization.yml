@@ -2,12 +2,6 @@ name: Apply modernization patches
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'scripts/apply-modernization.py'
-      - 'scripts/apply-product-updates.py'
-      - 'scripts/apply-capability-routing.py'
-      - '.github/workflows/apply-modernization.yml'
 
 permissions:
   contents: write

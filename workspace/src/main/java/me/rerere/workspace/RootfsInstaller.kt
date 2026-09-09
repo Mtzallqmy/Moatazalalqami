@@ -8,7 +8,10 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.StandardCopyOption
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.GZIPInputStream
 import org.tukaani.xz.XZInputStream
 
@@ -22,27 +25,17 @@ class RootfsInstaller(
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ) {
         require(url.isNotBlank()) { "Rootfs download url is required" }
-        manager.ensureWorkspace(root)
-        val format = ArchiveFormat.fromUrl(url)
-        val tempDir = manager.tempDir(root)
-        val archive = File(tempDir, "rootfs.${format.extension}")
-        val stagingDir = File(tempDir, "rootfs-staging")
-        val linuxDir = manager.linuxDir(root)
-
-        try {
-            stagingDir.deleteRecursively()
-            stagingDir.mkdirs()
-            download(url, archive, onProgress)
-            extractTar(archive, stagingDir, format, onProgress)
-            linuxDir.deleteRecursively()
-            require(stagingDir.renameTo(linuxDir)) {
-                "Failed to move rootfs into workspace"
+        withInstallLock(root) {
+            manager.ensureWorkspace(root)
+            recoverInterruptedInstallUnlocked(root)
+            val format = ArchiveFormat.fromUrl(url)
+            val archive = File(manager.tempDir(root), "rootfs-download.${format.extension}")
+            try {
+                download(url, archive, onProgress)
+                installPreparedArchive(root, archive, format, onProgress)
+            } finally {
+                archive.delete()
             }
-            patcher.patch(linuxDir)
-            onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
-        } finally {
-            archive.delete()
-            stagingDir.deleteRecursively()
         }
     }
 
@@ -52,21 +45,122 @@ class RootfsInstaller(
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ) {
         require(archive.isFile && archive.length() > 0L) { "Rootfs archive is missing" }
-        manager.ensureWorkspace(root)
-        val tempDir = manager.tempDir(root)
-        val stagingDir = File(tempDir, "rootfs-staging")
+        withInstallLock(root) {
+            manager.ensureWorkspace(root)
+            recoverInterruptedInstallUnlocked(root)
+            installPreparedArchive(root, archive, ArchiveFormat.fromFile(archive), onProgress)
+        }
+    }
+
+    /**
+     * Extracts and patches outside the active rootfs, then swaps directories in the same
+     * filesystem. The previous rootfs remains available as a rollback target until the new
+     * tree has been activated and validated. A process death at either rename is repaired by
+     * [recoverInterruptedInstall] on the next install attempt/startup health check.
+     */
+    private fun installPreparedArchive(
+        root: String,
+        archive: File,
+        format: ArchiveFormat,
+        onProgress: (RootfsInstallProgress) -> Unit,
+    ) {
+        val workspaceDir = manager.workspaceDir(root)
+        val stagingDir = File(workspaceDir, STAGING_DIR)
+        val backupDir = File(workspaceDir, BACKUP_DIR)
         val linuxDir = manager.linuxDir(root)
+        val transactionMarker = File(workspaceDir, TRANSACTION_MARKER)
+
+        stagingDir.deleteRecursively()
+        backupDir.deleteRecursively()
+        require(stagingDir.mkdirs()) { "Failed to create rootfs staging directory" }
+        transactionMarker.writeText("preparing\n")
+
         try {
-            stagingDir.deleteRecursively()
-            stagingDir.mkdirs()
-            extractTar(archive, stagingDir, ArchiveFormat.fromFile(archive), onProgress)
-            linuxDir.deleteRecursively()
-            require(stagingDir.renameTo(linuxDir)) { "Failed to move rootfs into workspace" }
-            patcher.patch(linuxDir)
+            extractTar(archive, stagingDir, format, onProgress)
+            patcher.patch(stagingDir)
+            validateRootfs(stagingDir)
+            transactionMarker.writeText("activating\n")
+
+            if (linuxDir.exists()) {
+                if (linuxDir.list()?.isEmpty() == true) {
+                    require(linuxDir.delete()) { "Failed to remove empty rootfs directory" }
+                } else {
+                    moveDirectory(linuxDir, backupDir)
+                }
+            }
+
+            try {
+                moveDirectory(stagingDir, linuxDir)
+                validateRootfs(linuxDir)
+            } catch (activationError: Throwable) {
+                linuxDir.deleteRecursively()
+                if (backupDir.exists()) {
+                    runCatching { moveDirectory(backupDir, linuxDir) }
+                        .onFailure { activationError.addSuppressed(it) }
+                }
+                throw activationError
+            }
+
+            backupDir.deleteRecursively()
+            transactionMarker.delete()
             onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
         } finally {
             stagingDir.deleteRecursively()
+            // Keep the marker/backup when activation did not finish: recovery needs them.
+            if (!backupDir.exists() && linuxDir.hasUsableRootfs()) {
+                transactionMarker.delete()
+            }
         }
+    }
+
+    /** Repairs the only two durable interrupted-swap states before doing new work. */
+    fun recoverInterruptedInstall(root: String) = withInstallLock(root) {
+        recoverInterruptedInstallUnlocked(root)
+    }
+
+    private fun recoverInterruptedInstallUnlocked(root: String) {
+        manager.ensureWorkspace(root)
+        val workspaceDir = manager.workspaceDir(root)
+        val linuxDir = manager.linuxDir(root)
+        val backupDir = File(workspaceDir, BACKUP_DIR)
+        val stagingDir = File(workspaceDir, STAGING_DIR)
+        val marker = File(workspaceDir, TRANSACTION_MARKER)
+
+        if (backupDir.exists()) {
+            if (linuxDir.hasUsableRootfs()) {
+                // New tree was activated; only cleanup was interrupted.
+                backupDir.deleteRecursively()
+            } else {
+                linuxDir.deleteRecursively()
+                moveDirectory(backupDir, linuxDir)
+            }
+        }
+        stagingDir.deleteRecursively()
+        if (!backupDir.exists()) marker.delete()
+    }
+
+    private fun validateRootfs(rootfs: File) {
+        require(rootfs.isDirectory) { "Rootfs is not a directory" }
+        require(File(rootfs, "bin/sh").isFile) { "Rootfs is invalid: /bin/sh is missing" }
+        require(File(rootfs, "etc").isDirectory) { "Rootfs is invalid: /etc is missing" }
+    }
+
+    private fun File.hasUsableRootfs(): Boolean =
+        isDirectory && File(this, "bin/sh").isFile && File(this, "etc").isDirectory
+
+    private fun moveDirectory(source: File, target: File) {
+        require(source.exists()) { "Rootfs move source is missing: ${source.name}" }
+        require(!target.exists()) { "Rootfs move target already exists: ${target.name}" }
+        try {
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(source.toPath(), target.toPath())
+        }
+    }
+
+    private inline fun <T> withInstallLock(root: String, block: () -> T): T {
+        val lock = INSTALL_LOCKS.computeIfAbsent(root) { Any() }
+        return synchronized(lock) { block() }
     }
 
     private fun download(
@@ -432,6 +526,10 @@ class RootfsInstaller(
     }
 
     companion object {
+        internal const val STAGING_DIR = ".rootfs-staging"
+        internal const val BACKUP_DIR = ".rootfs-backup"
+        internal const val TRANSACTION_MARKER = ".rootfs-transaction"
+        private val INSTALL_LOCKS = ConcurrentHashMap<String, Any>()
         private const val TAR_BLOCK_SIZE = 512
         private const val BUFFER_SIZE = 64 * 1024
         private const val PROGRESS_STEP_BYTES = 512 * 1024

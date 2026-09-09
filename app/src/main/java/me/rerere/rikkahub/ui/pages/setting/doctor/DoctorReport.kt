@@ -1,6 +1,5 @@
 package me.rerere.rikkahub.ui.pages.setting.doctor
 
-import android.content.Context
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -11,14 +10,7 @@ import java.util.Locale
  * output is greppable for support flows.
  */
 object DoctorReport {
-    fun format(context: Context, checks: List<DoctorCheck>, header: String = "Moataz Alaqami — diagnostic report"): String =
-        format(checks, header) { context.getString(it.displayNameRes) }
-
-    fun format(
-        checks: List<DoctorCheck>,
-        header: String = "Moataz Alaqami — diagnostic report",
-        categoryName: (DoctorCategory) -> String,
-    ): String =
+    fun format(checks: List<DoctorCheck>, header: String = "Moataz Alaqami — diagnostic report"): String =
         buildString {
             appendLine(header)
             appendLine("Generated: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}")
@@ -31,7 +23,7 @@ object DoctorReport {
             DoctorCategory.entries.forEach { cat ->
                 val rows = checks.filter { it.category == cat }
                 if (rows.isEmpty()) return@forEach
-                appendLine("## ${categoryName(cat)}")
+                appendLine("## ${cat.displayName}")
                 rows.forEach { r ->
                     val mark = when (r.severity) {
                         Severity.OK -> "[ok]   "

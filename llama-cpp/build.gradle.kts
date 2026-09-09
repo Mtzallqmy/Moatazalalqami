@@ -11,8 +11,13 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Keep x86_64 available to the debug test APK used by API 26 CI.
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += if (project.findProperty("ciInstrumentation") == "true") {
+                listOf("arm64-v8a", "x86_64")
+            } else {
+                listOf("arm64-v8a")
+            }
         }
 
         externalNativeBuild {

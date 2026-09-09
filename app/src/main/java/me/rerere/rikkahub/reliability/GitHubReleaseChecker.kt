@@ -12,7 +12,7 @@ import okhttp3.Request
 private const val TAG = "GHReleaseChecker"
 
 /**
- * Checks GitHub Releases for the latest tag of `ExTV/rikkahub-agent` and compares against
+ * Checks GitHub Releases for the latest tag of `Mtzallqmy/Moatazalalqami` and compares against
  * the locally-installed [BuildConfig.VERSION_NAME]. Pure HTTP — no caching, no scheduler,
  * no UI. Surfaces are responsible for invoking when the user / scheduler asks.
  *
@@ -49,7 +49,7 @@ class GitHubReleaseChecker(private val client: OkHttpClient) {
             .get()
             .addHeader("Accept", "application/vnd.github+json")
             .addHeader("X-GitHub-Api-Version", "2022-11-28")
-            .addHeader("User-Agent", "rikkahub-agent/${BuildConfig.VERSION_NAME}")
+            .addHeader("User-Agent", "moataz-alaqami/${BuildConfig.VERSION_NAME}")
             .build()
         val response = try {
             client.newCall(req).execute()
@@ -117,6 +117,6 @@ class GitHubReleaseChecker(private val client: OkHttpClient) {
     }
 
     companion object {
-        const val LATEST_URL = "https://api.github.com/repos/ExTV/rikkahub-agent/releases/latest"
+        const val LATEST_URL = "https://api.github.com/repos/Mtzallqmy/Moatazalalqami/releases/latest"
     }
 }

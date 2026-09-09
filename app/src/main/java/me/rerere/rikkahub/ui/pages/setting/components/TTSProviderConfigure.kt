@@ -287,30 +287,14 @@ private fun MiMoTTSConfiguration(
     }
 
     // Voice
-    val voices = listOf(
-        "mimo_default",
-        "冰糖",
-        "茉莉",
-        "苏打",
-        "白桦",
-        "Mia",
-        "Chloe",
-        "Milo",
-        "Dean"
-    )
-
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_voice)) },
         description = { Text(stringResource(R.string.setting_tts_page_voice_description)) }
     ) {
-        SelectTextField(
+        OutlinedTextField(
             value = setting.voice,
-            options = voices,
             onValueChange = { newVoice ->
                 onValueChange(setting.copy(voice = newVoice))
-            },
-            onOptionSelected = { voice ->
-                onValueChange(setting.copy(voice = voice))
             },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("mimo_default") }
@@ -559,46 +543,29 @@ private fun QwenTTSConfiguration(
     }
 
     // Model
-    val models = listOf(
-        "qwen-audio-3.0-tts-flash",
-        "qwen-audio-3.0-tts-plus",
-    )
-
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_model)) },
         description = { Text(stringResource(R.string.setting_tts_page_model_description)) }
     ) {
-        SelectTextField(
+        OutlinedTextField(
             value = setting.model,
-            options = models,
             onValueChange = { newModel ->
                 onValueChange(setting.copy(model = newModel))
             },
-            onOptionSelected = { model ->
-                val defaultVoice = when (model) {
-                    "qwen-audio-3.0-tts-plus" -> "longanlingxin"
-                    "qwen-audio-3.0-tts-flash" -> "longanhuan_v3.6"
-                    else -> setting.voice
-                }
-                onValueChange(setting.copy(model = model, voice = defaultVoice))
-            },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("qwen-audio-3.0-tts-flash") }
+            placeholder = { Text("qwen3-tts-flash") }
         )
     }
 
     // Voice
-    val voices = when (setting.model) {
-        "qwen-audio-3.0-tts-plus" -> listOf("longanlingxin", "longanlufeng")
-        "qwen-audio-3.0-tts-flash" -> listOf(
-            "longanfengyue", "longanyuanfei", "longanlingxi", "longanxiaoxin",
-            "longanhuan_v3.6", "longjielidou_v3.6", "longpaopao_v3.6",
-            "longhuohuo_v3.6", "longchuanshu_v3.6", "loongmary",
-            "loongeva_v3.6", "loongjohn",
-        )
-
-        else -> emptyList()
-    }
+    val voices = listOf(
+        "Cherry", "Serene", "Ethan", "Chelsie",
+        "Momo", "Vivian", "Moon", "Maia", "Kai",
+        "Nofish", "Bella", "Jennifer", "Ryan",
+        "Katerina", "Aiden", "Eldric Sage", "Mia",
+        "Mochi", "Bellona", "Vincent", "Bunny",
+        "Neil", "Elias", "Arthur", "Nini"
+    )
 
     FormItem(
         label = { Text(stringResource(R.string.setting_tts_page_voice)) },
@@ -617,37 +584,21 @@ private fun QwenTTSConfiguration(
         )
     }
 
-    // Audio Format
-    val formats = listOf("wav", "mp3", "pcm", "opus")
+    // Language Type
+    val languageTypes = listOf("Auto", "Chinese", "English", "Japanese", "Korean")
 
     FormItem(
-        label = { Text("Audio Format") },
-        description = { Text("Audio encoding returned by Qwen TTS") }
+        label = { Text("Language Type") },
+        description = { Text("Language type for TTS synthesis") }
     ) {
         SelectTextField(
-            value = setting.format,
-            options = formats,
-            readOnly = true,
-            onOptionSelected = { format ->
-                onValueChange(setting.copy(format = format))
+            value = setting.languageType,
+            options = languageTypes,
+            onValueChange = { newLanguageType ->
+                onValueChange(setting.copy(languageType = newLanguageType))
             },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-
-    // Sample Rate
-    val sampleRates = listOf(8000, 16000, 22050, 24000, 44100, 48000)
-
-    FormItem(
-        label = { Text("Sample Rate") },
-        description = { Text("Audio sample rate in Hz") }
-    ) {
-        SelectTextField(
-            value = setting.sampleRate.toString(),
-            options = sampleRates,
-            readOnly = true,
-            onOptionSelected = { sampleRate ->
-                onValueChange(setting.copy(sampleRate = sampleRate))
+            onOptionSelected = { languageType ->
+                onValueChange(setting.copy(languageType = languageType))
             },
             modifier = Modifier.fillMaxWidth()
         )

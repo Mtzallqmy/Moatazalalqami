@@ -915,7 +915,7 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(R.string.table),
+                text = "表格",
                 fontSize = 12.sp,
                 lineHeight = 12.sp,
                 fontWeight = FontWeight.SemiBold,

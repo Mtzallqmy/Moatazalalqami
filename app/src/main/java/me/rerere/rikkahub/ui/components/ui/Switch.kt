@@ -39,7 +39,7 @@ enum class SwitchSize {
 @Composable
 fun Switch(
     checked: Boolean,
-    onCheckedChange: ((Boolean) -> Unit)? = null,
+    onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     size: SwitchSize = SwitchSize.Medium,
     enabled: Boolean = true,
@@ -104,7 +104,7 @@ fun Switch(
                 role = Role.Switch,
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
-                onValueChange = { onCheckedChange?.invoke(it) }
+                onValueChange = onCheckedChange
             ),
         contentAlignment = Alignment.CenterStart
     ) {

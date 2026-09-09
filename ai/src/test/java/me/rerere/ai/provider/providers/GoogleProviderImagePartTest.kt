@@ -35,11 +35,10 @@ class GoogleProviderImagePartTest {
     private fun invokeParseMessagePart(json: String): UIMessagePart? {
         val method = GoogleProvider::class.java.getDeclaredMethod(
             "parseMessagePart",
-            JsonObject::class.java,
-            Int::class.javaPrimitiveType
+            JsonObject::class.java
         )
         method.isAccessible = true
-        return method.invoke(provider, Json.parseToJsonElement(json).jsonObject, 0) as UIMessagePart?
+        return method.invoke(provider, Json.parseToJsonElement(json).jsonObject) as UIMessagePart?
     }
 
     private fun invokeBuildContents(messages: List<UIMessage>): JsonArray {

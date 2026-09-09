@@ -35,7 +35,6 @@ import me.rerere.rikkahub.browser.BrowserPreferences
 import me.rerere.rikkahub.browser.BrowserToolDefaults
 import java.net.InetAddress
 import java.io.File
-import me.rerere.rikkahub.R
 
 /**
  * Each row that depends on a system capability (a permission, an OS-level service binding,
@@ -114,29 +113,29 @@ private object Capability {
 }
 
 /** Friendly name for the row's "needed by:" subtitle. */
-private fun LocalToolOption.shortName(ctx: Context): String = when (this) {
-    LocalToolOption.Location -> ctx.getString(R.string.tool_name_location)
-    LocalToolOption.WifiInfo -> ctx.getString(R.string.tool_name_wifi)
-    LocalToolOption.NotificationListener -> ctx.getString(R.string.tool_name_notif_listener)
-    LocalToolOption.ScreenAutomation -> ctx.getString(R.string.tool_name_screen_automation)
-    LocalToolOption.Termux -> ctx.getString(R.string.tool_name_termux)
-    LocalToolOption.SpeechToText -> ctx.getString(R.string.tool_name_stt)
-    LocalToolOption.Ssh -> ctx.getString(R.string.tool_name_ssh)
-    LocalToolOption.TelegramBot -> ctx.getString(R.string.tool_name_tg_bot)
-    LocalToolOption.CronJobs -> ctx.getString(R.string.tool_name_cron)
-    LocalToolOption.Workflows -> ctx.getString(R.string.tool_name_workflows)
-    LocalToolOption.Notification -> ctx.getString(R.string.tool_name_notification)
-    LocalToolOption.Files -> ctx.getString(R.string.tool_name_files)
-    LocalToolOption.Browser -> ctx.getString(R.string.tool_name_browser)
-    LocalToolOption.SmsSend -> ctx.getString(R.string.tool_name_sms_send)
-    LocalToolOption.Wallpaper -> ctx.getString(R.string.tool_name_wallpaper)
-    LocalToolOption.Keystore -> ctx.getString(R.string.tool_name_keystore)
-    LocalToolOption.Nfc -> ctx.getString(R.string.tool_name_nfc)
-    LocalToolOption.ExternalStorage -> ctx.getString(R.string.tool_name_ext_storage)
-    LocalToolOption.Archive -> ctx.getString(R.string.tool_name_archive)
-    LocalToolOption.Shizuku -> ctx.getString(R.string.tool_name_shizuku)
-    LocalToolOption.AppLauncher -> ctx.getString(R.string.tool_name_app_launcher)
-    LocalToolOption.KeyboardControl -> ctx.getString(R.string.tool_name_keyboard)
+private fun LocalToolOption.shortName(): String = when (this) {
+    LocalToolOption.Location -> "Location"
+    LocalToolOption.WifiInfo -> "WiFi info"
+    LocalToolOption.NotificationListener -> "Notification listener"
+    LocalToolOption.ScreenAutomation -> "Screen automation"
+    LocalToolOption.Termux -> "Termux"
+    LocalToolOption.SpeechToText -> "Speech-to-text"
+    LocalToolOption.Ssh -> "SSH"
+    LocalToolOption.TelegramBot -> "Telegram bot"
+    LocalToolOption.CronJobs -> "Cron jobs"
+    LocalToolOption.Workflows -> "Workflows"
+    LocalToolOption.Notification -> "Notification"
+    LocalToolOption.Files -> "Files"
+    LocalToolOption.Browser -> "Browser"
+    LocalToolOption.SmsSend -> "SMS send"
+    LocalToolOption.Wallpaper -> "Wallpaper"
+    LocalToolOption.Keystore -> "Keystore"
+    LocalToolOption.Nfc -> "NFC"
+    LocalToolOption.ExternalStorage -> "External storage"
+    LocalToolOption.Archive -> "Archive (zip)"
+    LocalToolOption.Shizuku -> "Shizuku"
+    LocalToolOption.AppLauncher -> "App launcher"
+    LocalToolOption.KeyboardControl -> "Agent keyboard"
     else -> this::class.simpleName ?: "?"
 }
 
@@ -220,41 +219,41 @@ class DoctorChecks(
             capabilityRow(
                 id = "perm.notifications",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_post_notifications),
+                label = "Post-notifications permission",
                 cap = Capability.Notifications,
                 enabled = enabled,
                 granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                     PermissionHelper.hasRuntime(context, listOf(Manifest.permission.POST_NOTIFICATIONS)),
-                grantedDetail = context.getString(R.string.doctor_detail_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_notifications_missing),
-                fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                grantedDetail = "Granted.",
+                missingDetail = "Required for foreground service notifications, tool approvals, and workflow alerts.",
+                fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
             )
         )
         add(
             capabilityRow(
                 id = "perm.location",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_fine_location),
+                label = "Fine location permission",
                 cap = Capability.FineLocation,
                 enabled = enabled,
                 granted = PermissionHelper.hasRuntime(context, listOf(Manifest.permission.ACCESS_FINE_LOCATION)),
-                grantedDetail = context.getString(R.string.doctor_detail_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_location_missing),
-                fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                grantedDetail = "Granted.",
+                missingDetail = "Needed for geofence triggers and reading WiFi SSID on Android 10+.",
+                fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
             )
         )
         add(
             capabilityRow(
                 id = "perm.battery_opt",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_battery_whitelist),
+                label = "Battery optimisation whitelist",
                 cap = Capability.BatteryWhitelist,
                 enabled = enabled,
                 granted = PermissionHelper.ignoresBatteryOptimizations(context),
-                grantedDetail = context.getString(R.string.doctor_detail_perm_battery_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_battery_missing),
+                grantedDetail = "App is whitelisted — background services run reliably.",
+                missingDetail = "Doze can kill the Telegram bot, cron jobs, and workflows.",
                 fix = FixAction.OpenIntent(
-                    label = context.getString(R.string.doctor_fix_request_whitelist),
+                    label = "Request whitelist",
                     intent = PermissionHelper.requestIgnoreBatteryOptimizationsIntent(context),
                 ),
             )
@@ -263,14 +262,14 @@ class DoctorChecks(
             capabilityRow(
                 id = "perm.notification_listener",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_notif_listener_access),
+                label = "Notification Listener access",
                 cap = Capability.NotificationListener,
                 enabled = enabled,
                 granted = PermissionHelper.hasNotificationListener(context),
-                grantedDetail = context.getString(R.string.doctor_detail_perm_notifications_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_notifications_missing),
+                grantedDetail = "Granted — listener can read notifications.",
+                missingDetail = "Not granted. The notification_received trigger and notification tools won't work.",
                 fix = FixAction.OpenIntent(
-                    label = context.getString(R.string.doctor_fix_open_settings),
+                    label = "Open settings",
                     intent = PermissionHelper.notificationListenerSettingsIntent(),
                 ),
             )
@@ -279,14 +278,14 @@ class DoctorChecks(
             capabilityRow(
                 id = "perm.accessibility",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_accessibility),
+                label = "Accessibility Service",
                 cap = Capability.Accessibility,
                 enabled = enabled,
                 granted = PermissionHelper.hasAccessibilityService(context),
-                grantedDetail = context.getString(R.string.doctor_detail_perm_accessibility_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_accessibility_missing),
+                grantedDetail = "Enabled in system settings.",
+                missingDetail = "Not enabled. take_screenshot, swipe, scroll, click_at, and gesture tools won't work.",
                 fix = FixAction.OpenIntent(
-                    label = context.getString(R.string.doctor_fix_open_settings),
+                    label = "Open settings",
                     intent = PermissionHelper.accessibilitySettingsIntent(),
                 ),
             )
@@ -296,14 +295,14 @@ class DoctorChecks(
                 capabilityRow(
                     id = "perm.all_files",
                     category = DoctorCategory.Permissions,
-                    label = context.getString(R.string.doctor_check_all_files),
+                    label = "All-files access",
                     cap = Capability.AllFiles,
                     enabled = enabled,
                     granted = PermissionHelper.hasAllFilesAccess(context),
-                    grantedDetail = context.getString(R.string.doctor_detail_perm_files_granted),
-                    missingDetail = context.getString(R.string.doctor_detail_perm_files_missing),
+                    grantedDetail = "Granted — file_read / file_write tools can reach any path.",
+                    missingDetail = "Not granted. File tools are restricted to scoped storage.",
                     fix = FixAction.OpenIntent(
-                        label = context.getString(R.string.doctor_fix_open_settings),
+                        label = "Open settings",
                         intent = PermissionHelper.allFilesAccessIntent(context),
                     ),
                 )
@@ -314,13 +313,13 @@ class DoctorChecks(
             capabilityRow(
                 id = "perm.send_sms",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_send_sms),
+                label = "Send-SMS permission",
                 cap = Capability.SendSms,
                 enabled = enabled,
                 granted = PermissionHelper.hasRuntime(context, listOf(Manifest.permission.SEND_SMS)),
-                grantedDetail = context.getString(R.string.doctor_detail_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_sms_missing),
-                fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                grantedDetail = "Granted.",
+                missingDetail = "send_sms tool needs this to send messages.",
+                fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
             )
         )
         // Previously-unchecked permissions, now covered. Each is tool-aware: it only WARNs when
@@ -331,26 +330,26 @@ class DoctorChecks(
             capabilityRow(
                 id = "perm.overlay",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_overlay),
+                label = "Display over other apps",
                 cap = Capability.Overlay,
                 enabled = enabled,
                 granted = android.provider.Settings.canDrawOverlays(context),
-                grantedDetail = context.getString(R.string.doctor_detail_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_overlay_missing),
-                fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                grantedDetail = "Granted.",
+                missingDetail = "The \"agent is working\" overlay can't be shown during screen automation.",
+                fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
             )
         )
         add(
             capabilityRow(
                 id = "perm.write_settings",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_write_settings),
+                label = "Modify system settings",
                 cap = Capability.WriteSettings,
                 enabled = enabled,
                 granted = PermissionHelper.hasWriteSettings(context),
-                grantedDetail = context.getString(R.string.doctor_detail_granted),
-                missingDetail = context.getString(R.string.doctor_detail_perm_brightness_missing),
-                fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                grantedDetail = "Granted.",
+                missingDetail = "set_brightness can't change screen brightness without it.",
+                fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
             )
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -358,13 +357,13 @@ class DoctorChecks(
                 capabilityRow(
                     id = "perm.bluetooth_connect",
                     category = DoctorCategory.Permissions,
-                    label = context.getString(R.string.doctor_check_bluetooth),
+                    label = "Bluetooth Connect",
                     cap = Capability.BluetoothConnect,
                     enabled = enabled,
                     granted = PermissionHelper.hasRuntime(context, listOf(Manifest.permission.BLUETOOTH_CONNECT)),
-                    grantedDetail = context.getString(R.string.doctor_detail_granted),
-                    missingDetail = context.getString(R.string.doctor_detail_perm_bluetooth_missing),
-                    fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                    grantedDetail = "Granted.",
+                    missingDetail = "Workflow Bluetooth triggers can't read paired-device state.",
+                    fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
                 )
             )
         }
@@ -373,13 +372,13 @@ class DoctorChecks(
                 capabilityRow(
                     id = "perm.nearby_wifi",
                     category = DoctorCategory.Permissions,
-                    label = context.getString(R.string.doctor_check_nearby_wifi),
+                    label = "Nearby WiFi devices",
                     cap = Capability.NearbyWifi,
                     enabled = enabled,
                     granted = PermissionHelper.hasRuntime(context, listOf(Manifest.permission.NEARBY_WIFI_DEVICES)),
-                    grantedDetail = context.getString(R.string.doctor_detail_granted),
-                    missingDetail = context.getString(R.string.doctor_detail_perm_wifi_missing),
-                    fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                    grantedDetail = "Granted.",
+                    missingDetail = "WiFi scan/info may be limited on Android 13+ without it.",
+                    fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
                 )
             )
         }
@@ -388,13 +387,13 @@ class DoctorChecks(
                 capabilityRow(
                     id = "perm.background_location",
                     category = DoctorCategory.Permissions,
-                    label = context.getString(R.string.doctor_check_bg_location),
+                    label = "Background location",
                     cap = Capability.BackgroundLocation,
                     enabled = enabled,
                     granted = PermissionHelper.hasRuntime(context, listOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)),
-                    grantedDetail = context.getString(R.string.doctor_detail_granted),
-                    missingDetail = context.getString(R.string.doctor_detail_perm_geofence_missing),
-                    fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                    grantedDetail = "Granted.",
+                    missingDetail = "Geofence workflow triggers won't fire when the app is closed.",
+                    fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
                 )
             )
         }
@@ -408,8 +407,8 @@ class DoctorChecks(
                     DoctorCheck(
                         id = "perm.nfc_enabled",
                         category = DoctorCategory.Permissions,
-                        label = context.getString(R.string.doctor_check_nfc),
-                        detail = context.getString(R.string.doctor_detail_nfc_no_hardware),
+                        label = "NFC",
+                        detail = "Device has no NFC hardware.",
                         severity = Severity.INFO,
                     )
                 )
@@ -417,14 +416,15 @@ class DoctorChecks(
                     DoctorCheck(
                         id = "perm.nfc_enabled",
                         category = DoctorCategory.Permissions,
-                        label = context.getString(R.string.doctor_check_nfc),
+                        label = "NFC",
                         detail = if (nfcNeeders.isEmpty())
-                            context.getString(R.string.doctor_detail_nfc_off_not_required)
+                            "NFC is turned off in system settings. Not required by any enabled tool."
                         else
-                            context.getString(R.string.doctor_detail_nfc_off_needed_by_3, nfcNeeders.joinToString(", ") { it.shortName(context) }),
+                            "NFC is turned off in system settings. Needed by: " +
+                                nfcNeeders.joinToString(", ") { it.shortName() } + ".",
                         severity = if (nfcNeeders.isEmpty()) Severity.INFO else Severity.WARN,
                         fix = if (nfcNeeders.isEmpty()) null else FixAction.OpenIntent(
-                            label = context.getString(R.string.doctor_fix_open_nfc),
+                            label = "Open NFC settings",
                             intent = android.content.Intent(android.provider.Settings.ACTION_NFC_SETTINGS)
                                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                         ),
@@ -434,8 +434,8 @@ class DoctorChecks(
                     DoctorCheck(
                         id = "perm.nfc_enabled",
                         category = DoctorCategory.Permissions,
-                        label = context.getString(R.string.doctor_check_nfc),
-                        detail = context.getString(R.string.doctor_detail_nfc_ok),
+                        label = "NFC",
+                        detail = "NFC hardware present and enabled.",
                         severity = Severity.OK,
                     )
                 )
@@ -471,8 +471,8 @@ class DoctorChecks(
         }
         val detail = when {
             granted -> grantedDetail
-            needers.isEmpty() -> context.getString(R.string.doctor_detail_not_required_tool)
-            else -> context.getString(R.string.doctor_detail_perm_needed_by_2, missingDetail, needers.joinToString(", ") { it.shortName(context) })
+            needers.isEmpty() -> "Not required by any enabled tool."
+            else -> "$missingDetail Needed by: ${needers.joinToString(", ") { it.shortName() }}."
         }
         return DoctorCheck(
             id = id,
@@ -494,15 +494,15 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.telegram_token",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_tg_token),
+                    label = "Telegram bot token",
                     // Don't render any portion of the token — Telegram bot tokens are
                     // formatted "<bot_id>:<secret>" and even the first 6 chars reveal the
                     // bot id, which an attacker could use to enumerate bot endpoints.
-                    detail = if (tg.token.isNotBlank()) context.getString(R.string.doctor_detail_tg_token_ok, tg.token.length)
-                    else context.getString(R.string.doctor_detail_tg_token_missing),
+                    detail = if (tg.token.isNotBlank()) "Token configured (${tg.token.length} chars, hidden)."
+                    else "Telegram bot is enabled but no token is set — the service will fail at startup.",
                     severity = if (tg.token.isNotBlank()) Severity.OK else Severity.FAIL,
                     fix = if (tg.token.isBlank())
-                        FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_telegram), AppRouteKey.SettingTelegram)
+                        FixAction.OpenAppRoute("Open Telegram settings", AppRouteKey.SettingTelegram)
                     else null,
                 )
             )
@@ -510,9 +510,9 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.telegram_running",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_tg_fgs),
-                    detail = if (TelegramBotService.isRunning) context.getString(R.string.doctor_detail_tg_running)
-                    else context.getString(R.string.doctor_detail_tg_stopped),
+                    label = "Telegram bot foreground service",
+                    detail = if (TelegramBotService.isRunning) "Service is running."
+                    else "Service is stopped. Telegram messages won't reach the assistant. The watchdog will retry on the next 30-min health pass.",
                     severity = when {
                         TelegramBotService.isRunning -> Severity.OK
                         tg.token.isBlank() -> Severity.INFO  // token issue covers this
@@ -525,8 +525,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.telegram_off",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_tg_bot),
-                    detail = context.getString(R.string.doctor_detail_tg_disabled),
+                    label = "Telegram bot",
+                    detail = "Disabled — that's fine if you don't use Telegram.",
                     severity = Severity.INFO,
                 )
             )
@@ -539,11 +539,11 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.telegram_proxy",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_tg_proxy),
+                    label = "Telegram bot proxy",
                     detail = if (tg.proxyEnabled)
-                        context.getString(R.string.doctor_detail_tg_proxy_configured, tg.proxyType, tg.proxyHost, tg.proxyPort)
+                        "${tg.proxyType} proxy at ${tg.proxyHost}:${tg.proxyPort}."
                     else
-                        context.getString(R.string.doctor_detail_tg_no_proxy),
+                        "Not configured, connecting directly to Telegram.",
                     severity = Severity.INFO,
                 )
             )
@@ -552,8 +552,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.telegram_proxy",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_tg_proxy),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "Telegram bot proxy",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -571,20 +571,20 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.accessibility_bound",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_accessibility_bound),
+                    label = "AccessibilityService bound",
                     detail = when {
                         bound && windowsOk ->
-                            context.getString(R.string.doctor_detail_acc_alive, accNeeders.joinToString(", ") { it.shortName(context) })
+                            "Service object is alive — ${accNeeders.joinToString(", ") { it.shortName() }} can run."
                         bound ->
-                            context.getString(R.string.doctor_detail_acc_bound_no_window)
+                            "Service is bound but window retrieval returns nothing. It is likely running with a pre-update configuration; toggle the accessibility service off and on."
                         PermissionHelper.hasAccessibilityService(context) ->
-                            context.getString(R.string.doctor_detail_acc_enabled_not_bound)
+                            "Enabled in settings but not bound (Android killed the service or it hasn't started yet). Toggle it off and on again."
                         else ->
-                            context.getString(R.string.doctor_detail_acc_not_enabled, accNeeders.joinToString(", ") { it.shortName(context) })
+                            "Not enabled. Required by: ${accNeeders.joinToString(", ") { it.shortName() }}."
                     },
                     severity = if (bound && windowsOk) Severity.OK else Severity.WARN,
                     fix = if (!bound || !windowsOk) FixAction.OpenIntent(
-                        label = context.getString(R.string.doctor_fix_open_settings),
+                        label = "Open settings",
                         intent = PermissionHelper.accessibilitySettingsIntent(),
                     ) else null,
                 )
@@ -597,19 +597,19 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.notification_listener_bound",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_notif_listener_bound),
+                    label = "NotificationListener bound",
                     detail = if (NotificationListenerHandle.isBound())
-                        context.getString(R.string.doctor_detail_nl_bound, nlNeeders.joinToString(", ") { it.shortName(context) })
+                        "Listener is bound — ${nlNeeders.joinToString(", ") { it.shortName() }} can run."
                     else if (PermissionHelper.hasNotificationListener(context))
-                        context.getString(R.string.doctor_detail_nl_granted_not_bound)
+                        "Granted but not currently bound. Toggle it off and on in settings."
                     else
-                        context.getString(R.string.doctor_detail_nl_not_granted, nlNeeders.joinToString(", ") { it.shortName(context) }),
+                        "Not granted. Required by: ${nlNeeders.joinToString(", ") { it.shortName() }}.",
                     severity = when {
                         NotificationListenerHandle.isBound() -> Severity.OK
                         else -> Severity.WARN
                     },
                     fix = if (!NotificationListenerHandle.isBound()) FixAction.OpenIntent(
-                        label = context.getString(R.string.doctor_fix_open_settings),
+                        label = "Open settings",
                         intent = PermissionHelper.notificationListenerSettingsIntent(),
                     ) else null,
                 )
@@ -643,15 +643,15 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "assistant.default",
                     category = DoctorCategory.AssistantInfo,
-                    label = context.getString(R.string.doctor_check_default_assistant),
+                    label = "Default assistant",
                     detail = if (assistants.isEmpty())
-                        context.getString(R.string.doctor_detail_no_assistants)
+                        "No assistants configured — the app won't be able to start a conversation."
                     else
-                        "\"${defaultAssistant.name.ifBlank { context.getString(R.string.doctor_unnamed_paren) }}\" " +
+                        "\"${defaultAssistant.name.ifBlank { "(unnamed)" }}\" " +
                         "(id: ${defaultAssistant.id.toString().take(8)}…). " +
-                        context.getString(R.string.doctor_detail_default_assistant_suffix),
+                        "Used for new chats, cron jobs, and Telegram when no override is set.",
                     severity = if (assistants.isEmpty()) Severity.WARN else Severity.INFO,
-                    fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_assistants), AppRouteKey.Assistant),
+                    fix = FixAction.OpenAppRoute("Open Assistants", AppRouteKey.Assistant),
                 )
             )
 
@@ -660,10 +660,10 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "assistant.count",
                     category = DoctorCategory.AssistantInfo,
-                    label = context.getString(R.string.doctor_check_assistant_count),
-                    detail = context.getString(R.string.doctor_detail_assistant_count, assistants.size),
+                    label = "Assistant count",
+                    detail = "${assistants.size} assistant(s) configured.",
                     severity = Severity.INFO,
-                    fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_assistants), AppRouteKey.Assistant),
+                    fix = FixAction.OpenAppRoute("Open Assistants", AppRouteKey.Assistant),
                 )
             )
 
@@ -680,16 +680,18 @@ class DoctorChecks(
                     DoctorCheck(
                         id = "assistant.telegram_override",
                         category = DoctorCategory.AssistantInfo,
-                        label = context.getString(R.string.doctor_check_tg_assistant_override),
+                        label = "Telegram bot assistant override",
                         detail = when {
                             tgAssistant != null ->
-                                context.getString(R.string.doctor_detail_tg_assistant_override_2, tgAssistant.name.ifBlank { context.getString(R.string.doctor_unnamed_paren) }, tgAssistant.id.toString().take(8))
+                                "Telegram inbound messages route to \"${tgAssistant.name.ifBlank { "(unnamed)" }}\" " +
+                                "(id: ${tgAssistant.id.toString().take(8)}…) — overriding the global default."
                             else ->
-                                context.getString(R.string.doctor_detail_tg_assistant_missing_2, tg.assistantId.take(8))
+                                "Telegram assistant override is set (id: ${tg.assistantId.take(8)}…) but no matching " +
+                                "assistant was found. Messages will fall back to the global default."
                         },
                         severity = if (tgAssistant != null) Severity.INFO else Severity.WARN,
                         fix = if (tgAssistant == null)
-                            FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_telegram), AppRouteKey.SettingTelegram)
+                            FixAction.OpenAppRoute("Open Telegram settings", AppRouteKey.SettingTelegram)
                         else null,
                     )
                 )
@@ -705,11 +707,11 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "assistant.subagent_profiles",
                     category = DoctorCategory.AssistantInfo,
-                    label = context.getString(R.string.doctor_check_subagent_profiles),
+                    label = "Sub-agent profiles",
                     detail = when {
-                        subAgentStatus.total == 0 -> context.getString(R.string.doctor_detail_no_subagents)
+                        subAgentStatus.total == 0 -> "No sub-agent profiles configured."
                         subAgentStatus.broken.isEmpty() ->
-                            context.getString(R.string.doctor_detail_subagents_ok, subAgentStatus.total)
+                            "${subAgentStatus.total} profile(s) configured, all resolve to an existing chat model."
                         else ->
                             "${subAgentStatus.total} profile(s) configured. ${subAgentStatus.broken.size} " +
                                 "reference a model that no longer resolves to a chat model of an enabled " +
@@ -717,7 +719,7 @@ class DoctorChecks(
                     },
                     severity = if (subAgentStatus.broken.isEmpty()) Severity.INFO else Severity.WARN,
                     fix = if (subAgentStatus.broken.isNotEmpty())
-                        FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_subagents), AppRouteKey.SettingSubAgents)
+                        FixAction.OpenAppRoute("Open Sub-agents", AppRouteKey.SettingSubAgents)
                     else null,
                 )
             )
@@ -736,11 +738,11 @@ class DoctorChecks(
         assistants: List<me.rerere.rikkahub.data.model.Assistant>,
     ): List<DoctorCheck> = buildList {
         fun enabledBy(option: LocalToolOption): String {
-            val names = assistants.filter { option in it.localTools }.map { it.name.ifBlank { context.getString(R.string.doctor_unnamed) } }
+            val names = assistants.filter { option in it.localTools }.map { it.name.ifBlank { "Unnamed" } }
             return when {
-                names.isEmpty() -> context.getString(R.string.doctor_detail_tools_disabled_all)
-                names.size <= 3 -> context.getString(R.string.doctor_detail_tools_enabled_for, names.joinToString(", "))
-                else -> context.getString(R.string.doctor_detail_tools_enabled_count, names.size, assistants.size)
+                names.isEmpty() -> "Disabled for every assistant."
+                names.size <= 3 -> "Enabled for: ${names.joinToString(", ")}."
+                else -> "Enabled for ${names.size} of ${assistants.size} assistants."
             }
         }
 
@@ -779,23 +781,23 @@ class DoctorChecks(
             groupRow(
                 id = "tools.screen_automation",
                 option = LocalToolOption.ScreenAutomation,
-                label = context.getString(R.string.doctor_check_screen_automation),
-                reliesOn = context.getString(R.string.doctor_relies_on_acc_overlay),
+                label = "Screen automation",
+                reliesOn = "accessibility service (required), overlay permission (optional banner)",
                 backendReady = accBound,
-                backendDetail = if (accBound) context.getString(R.string.doctor_detail_backend_acc_bound)
-                else context.getString(R.string.doctor_detail_backend_acc_not_bound),
-                fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_permissions), AppRouteKey.SettingPermissions),
+                backendDetail = if (accBound) "Accessibility service is bound."
+                else "Accessibility service is NOT bound; every gesture/read tool will fail.",
+                fix = FixAction.OpenAppRoute("Open app permissions", AppRouteKey.SettingPermissions),
             )
         )
         add(
             groupRow(
                 id = "tools.app_launcher",
                 option = LocalToolOption.AppLauncher,
-                label = context.getString(R.string.doctor_check_app_launcher),
-                reliesOn = context.getString(R.string.doctor_relies_on_launch),
+                label = "App launcher",
+                reliesOn = "nothing (standalone); uses the accessibility service only to verify the app reached the foreground when it happens to be on",
                 backendReady = true,
-                backendDetail = if (accBound) context.getString(R.string.doctor_detail_backend_launch_acc_available)
-                else context.getString(R.string.doctor_detail_backend_launch_no_acc),
+                backendDetail = if (accBound) "Foreground verification available."
+                else "Works, but launch results are best-effort without the accessibility service.",
                 fix = null,
             )
         )
@@ -805,16 +807,16 @@ class DoctorChecks(
             groupRow(
                 id = "tools.keyboard",
                 option = LocalToolOption.KeyboardControl,
-                label = context.getString(R.string.doctor_check_agent_keyboard),
-                reliesOn = context.getString(R.string.doctor_relies_on_keyboard),
+                label = "Agent keyboard",
+                reliesOn = "the co-signed agent-keyboard app, installed and enabled as an IME",
                 backendReady = kbInstalled && kbIme,
                 backendDetail = when {
-                    !kbInstalled -> context.getString(R.string.doctor_detail_kb_not_installed)
-                    !kbIme -> context.getString(R.string.doctor_detail_kb_installed_not_enabled)
-                    else -> context.getString(R.string.doctor_detail_kb_ok)
+                    !kbInstalled -> "agent-keyboard is not installed."
+                    !kbIme -> "Installed but not enabled in the system keyboard list."
+                    else -> "Installed and enabled as an IME."
                 },
                 fix = FixAction.OpenIntent(
-                    context.getString(R.string.doctor_fix_open_keyboard_settings),
+                    "Open keyboard settings",
                     android.content.Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS),
                 ),
             )
@@ -826,15 +828,15 @@ class DoctorChecks(
             groupRow(
                 id = "tools.notification_listener",
                 option = LocalToolOption.NotificationListener,
-                label = context.getString(R.string.doctor_check_notif_listener),
-                reliesOn = context.getString(R.string.doctor_relies_on_notification_listener),
+                label = "Notification listener",
+                reliesOn = "Notification Listener access, granted in system settings",
                 backendReady = PermissionHelper.hasNotificationListener(context),
                 backendDetail = if (PermissionHelper.hasNotificationListener(context))
-                    context.getString(R.string.doctor_detail_nl_granted)
+                    "Listener access is granted."
                 else
-                    context.getString(R.string.doctor_detail_backend_nl_not_granted),
+                    "Listener access is not granted; notification tools will fail.",
                 fix = FixAction.OpenIntent(
-                    context.getString(R.string.doctor_fix_open_settings),
+                    "Open settings",
                     PermissionHelper.notificationListenerSettingsIntent(),
                 ),
             )
@@ -844,11 +846,11 @@ class DoctorChecks(
             groupRow(
                 id = "tools.termux",
                 option = LocalToolOption.Termux,
-                label = context.getString(R.string.doctor_check_termux),
-                reliesOn = context.getString(R.string.doctor_relies_on_termux),
+                label = "Termux",
+                reliesOn = "the Termux app installed, with the RUN_COMMAND permission granted",
                 backendReady = termuxInstalled,
-                backendDetail = if (termuxInstalled) context.getString(R.string.doctor_detail_termux_installed)
-                else context.getString(R.string.doctor_detail_termux_not_installed),
+                backendDetail = if (termuxInstalled) "Termux is installed."
+                else "Termux is not installed; shell commands will fail.",
                 fix = null,
             )
         )
@@ -857,17 +859,17 @@ class DoctorChecks(
             groupRow(
                 id = "tools.shizuku",
                 option = LocalToolOption.Shizuku,
-                label = context.getString(R.string.doctor_check_shizuku),
-                reliesOn = context.getString(R.string.doctor_relies_on_shizuku),
+                label = "Shizuku",
+                reliesOn = "Shizuku (or Sui) installed, running, with permission granted",
                 backendReady = shizukuStatus == ShizukuStatus.READY,
                 backendDetail = when (shizukuStatus) {
-                    ShizukuStatus.READY -> context.getString(R.string.doctor_detail_shizuku_ready)
-                    ShizukuStatus.NOT_INSTALLED -> context.getString(R.string.doctor_detail_shizuku_not_installed)
-                    ShizukuStatus.NOT_RUNNING -> context.getString(R.string.doctor_detail_shizuku_not_running)
-                    ShizukuStatus.PERMISSION_DENIED -> context.getString(R.string.doctor_detail_shizuku_no_permission)
+                    ShizukuStatus.READY -> "Shizuku is ready."
+                    ShizukuStatus.NOT_INSTALLED -> "Shizuku is not installed."
+                    ShizukuStatus.NOT_RUNNING -> "Shizuku is installed but not running."
+                    ShizukuStatus.PERMISSION_DENIED -> "Shizuku is running but permission is not granted."
                 },
                 fix = if (shizukuStatus != ShizukuStatus.READY)
-                    FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_shizuku), AppRouteKey.SettingShizuku)
+                    FixAction.OpenAppRoute("Open Shizuku settings", AppRouteKey.SettingShizuku)
                 else null,
             )
         )
@@ -876,13 +878,13 @@ class DoctorChecks(
             groupRow(
                 id = "tools.files",
                 option = LocalToolOption.Files,
-                label = context.getString(R.string.doctor_check_files),
-                reliesOn = context.getString(R.string.doctor_relies_on_all_files),
+                label = "Files",
+                reliesOn = "all-files access on Android 11+ to reach arbitrary paths",
                 backendReady = filesReady,
-                backendDetail = if (filesReady) context.getString(R.string.doctor_detail_files_ok)
-                else context.getString(R.string.doctor_detail_files_restricted),
+                backendDetail = if (filesReady) "File tools can reach any path."
+                else "All-files access is not granted; file tools are restricted to scoped storage.",
                 fix = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                    FixAction.OpenIntent(context.getString(R.string.doctor_fix_open_settings), PermissionHelper.allFilesAccessIntent(context))
+                    FixAction.OpenIntent("Open settings", PermissionHelper.allFilesAccessIntent(context))
                 else null,
             )
         )
@@ -891,22 +893,22 @@ class DoctorChecks(
             groupRow(
                 id = "tools.browser",
                 option = LocalToolOption.Browser,
-                label = context.getString(R.string.doctor_check_browser),
-                reliesOn = context.getString(R.string.doctor_relies_on_browser_profile),
+                label = "Browser",
+                reliesOn = "a writable profile directory to persist cookies and localStorage",
                 backendReady = browserReady,
-                backendDetail = if (browserReady) context.getString(R.string.doctor_detail_browser_ok)
-                else context.getString(R.string.doctor_detail_browser_fail),
+                backendDetail = if (browserReady) "Profile directory exists and is writable."
+                else "Profile directory is missing or not writable; cookies won't persist.",
                 fix = FixAction.AutoFix(
-                    label = context.getString(R.string.doctor_fix_create_dir),
+                    label = "Create directory",
                     run = {
                         val dir = browserProfileDir()
                         val created = runCatching { dir.mkdirs() }.getOrDefault(false)
                         val nowOk = dir.exists() && dir.canWrite()
                         AutoFixResult(
                             ok = nowOk,
-                            message = if (nowOk) context.getString(R.string.doctor_fix_browser_created, dir.absolutePath)
-                            else if (created) context.getString(R.string.doctor_fix_browser_created_not_writable)
-                            else context.getString(R.string.doctor_fix_browser_mkdirs_failed),
+                            message = if (nowOk) "Created ${dir.absolutePath}."
+                            else if (created) "Directory created but still not writable, check storage permission."
+                            else "mkdirs() returned false; underlying storage may be read-only.",
                         )
                     },
                 ),
@@ -937,11 +939,11 @@ class DoctorChecks(
             DoctorCheck(
                 id = "db.version",
                 category = DoctorCategory.Database,
-                label = context.getString(R.string.doctor_check_db_version),
+                label = "Database schema version",
                 // Room refuses to open the DB unless the stored version matches the compiled schema;
                 // if we got here, version is the live schema version (migrations ran successfully).
-                detail = if (version > 0) context.getString(R.string.doctor_detail_db_version_ok, version)
-                else context.getString(R.string.doctor_detail_db_version_fail),
+                detail = if (version > 0) "v$version — migrations completed, schema is consistent."
+                else "Couldn't read DB version — Room may have failed to open the database.",
                 severity = if (version > 0) Severity.OK else Severity.WARN,
             )
         )
@@ -962,23 +964,23 @@ class DoctorChecks(
             DoctorCheck(
                 id = "db.integrity",
                 category = DoctorCategory.Database,
-                label = context.getString(R.string.doctor_check_db_integrity),
+                label = "DB integrity_check",
                 detail = when (integrity) {
-                    null -> context.getString(R.string.doctor_detail_db_integrity_timeout)
-                    "ok" -> context.getString(R.string.doctor_detail_db_integrity_ok)
-                    else -> context.getString(R.string.doctor_detail_db_integrity_result, integrity)
+                    null -> "Integrity check timed out or failed."
+                    "ok" -> "PRAGMA integrity_check returned ok."
+                    else -> "Integrity check returned: $integrity"
                 },
                 severity = if (integrity == "ok") Severity.OK else Severity.FAIL,
                 fix = if (mentionsFts) FixAction.AutoFix(
-                    label = context.getString(R.string.doctor_fix_rebuild_index),
+                    label = "Rebuild search index",
                     run = {
                         runCatching {
                             val n = conversationRepository.repairAndRebuildIndexes()
-                            AutoFixResult(ok = true, message = context.getString(R.string.doctor_fix_db_rebuilt, n))
+                            AutoFixResult(ok = true, message = "Rebuilt message_fts from $n conversation(s).")
                         }.getOrElse {
                             AutoFixResult(
                                 ok = false,
-                                message = context.getString(R.string.doctor_fix_db_repair_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                                message = "Repair failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                             )
                         }
                     },
@@ -993,11 +995,11 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "db.workflows",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_workflows),
-                    detail = context.getString(R.string.doctor_detail_tools_count, all.size, enabled),
+                    label = "Workflows",
+                    detail = "${all.size} total, $enabled enabled.",
                     severity = Severity.INFO,
                     fix = if (all.isNotEmpty())
-                        FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_workflows), AppRouteKey.SettingWorkflows)
+                        FixAction.OpenAppRoute("Open Workflows", AppRouteKey.SettingWorkflows)
                     else null,
                 )
             )
@@ -1010,11 +1012,11 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "db.scheduled_jobs",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_scheduled_jobs),
-                    detail = context.getString(R.string.doctor_detail_tools_count, all.size, enabled),
+                    label = "Scheduled jobs",
+                    detail = "${all.size} total, $enabled enabled.",
                     severity = Severity.INFO,
                     fix = if (all.isNotEmpty())
-                        FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_scheduled_jobs), AppRouteKey.SettingScheduledJobs)
+                        FixAction.OpenAppRoute("Open Scheduled jobs", AppRouteKey.SettingScheduledJobs)
                     else null,
                 )
             )
@@ -1026,11 +1028,11 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "db.stranded_runs",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_stranded_runs),
+                    label = "Stranded scheduled-job runs",
                     detail = if (stranded.isEmpty())
-                        context.getString(R.string.doctor_detail_worker_clean)
+                        "None. Worker has been finishing all runs cleanly."
                     else
-                        context.getString(R.string.doctor_detail_worker_stranded, stranded.size),
+                        "${stranded.size} run(s) started > 30 min ago and never reported back. Likely process kill mid-run.",
                     severity = if (stranded.isEmpty()) Severity.OK else Severity.WARN,
                 )
             )
@@ -1046,14 +1048,15 @@ class DoctorChecks(
                     DoctorCheck(
                         id = "storage.granted_directories",
                         category = DoctorCategory.Database,
-                        label = context.getString(R.string.doctor_check_granted_dirs),
+                        label = "Granted directories",
                         detail = when {
                             !externalStorageEnabled && grants.isEmpty() ->
-                                context.getString(R.string.doctor_detail_storage_not_enabled)
+                                "External Storage tool not enabled. Not required."
                             grants.isEmpty() ->
-                                context.getString(R.string.doctor_detail_storage_no_grants)
+                                "No directories granted yet. Call grant_directory_access to add one."
                             else ->
-                                context.getString(R.string.doctor_detail_storage_grants, grants.size, grants.joinToString(", ") { it.displayName })
+                                "${grants.size} directory(ies) granted: " +
+                                    grants.joinToString(", ") { it.displayName } + "."
                         },
                         severity = if (externalStorageEnabled && grants.isNotEmpty())
                             Severity.OK else Severity.INFO,
@@ -1091,10 +1094,10 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "net.providers",
                     category = DoctorCategory.Network,
-                    label = context.getString(R.string.doctor_check_providers),
-                    detail = context.getString(R.string.doctor_detail_providers_count, configured, provs.size),
+                    label = "LLM providers configured",
+                    detail = "$configured provider(s) configured (API key set, AICore enabled, or local model loaded) out of ${provs.size} total.",
                     severity = if (configured > 0) Severity.OK else Severity.WARN,
-                    fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_providers), AppRouteKey.SettingProvider),
+                    fix = FixAction.OpenAppRoute("Open Providers", AppRouteKey.SettingProvider),
                 )
             )
         }
@@ -1110,15 +1113,18 @@ class DoctorChecks(
                 val accel = prefs.acceleratorFlow(me.rerere.locallm.LocalRuntime.LiteRT).first()
                 val forceCpu = prefs.forceCpu(me.rerere.locallm.LocalRuntime.LiteRT)
                 val detail = when {
-                    accel == null -> context.getString(R.string.doctor_detail_accel_not_probed)
+                    accel == null -> "Not probed yet. The accelerator is decided on the first model load."
                     forceCpu && accel == "CPU" ->
-                        context.getString(R.string.doctor_detail_accel_cpu_full)
+                        "CPU (Try-GPU toggle off in Settings -> Local LiteRT). " +
+                            "Flip it on to retry the device's GPU on the next load."
                     accel == "CPU" ->
-                        context.getString(R.string.doctor_detail_accel_cpu_fallback_full)
-                    accel == "GPU" -> context.getString(R.string.doctor_detail_accel_gpu_full)
-                    accel == "QNN" || accel == "NPU" -> context.getString(R.string.doctor_detail_accel_npu_full)
-                    accel == "NNAPI" -> context.getString(R.string.doctor_detail_accel_nnapi)
-                    else -> context.getString(R.string.doctor_detail_accel_unknown, accel)
+                        "CPU (fallback: the GPU delegate failed to initialise on this device, " +
+                            "likely an MLDrift issue. Tap 'Re-detect' in Settings -> Local LiteRT " +
+                            "to retry with a fresh probe.)"
+                    accel == "GPU" -> "GPU (OpenCL or OpenGL, picked by LiteRT's internal probe)."
+                    accel == "QNN" || accel == "NPU" -> "NPU (Qualcomm QNN delegate)."
+                    accel == "NNAPI" -> "NNAPI."
+                    else -> "Backend label: $accel"
                 }
                 val severity = when {
                     accel == null -> Severity.INFO
@@ -1129,11 +1135,11 @@ class DoctorChecks(
                     DoctorCheck(
                         id = "net.litert_accel",
                         category = DoctorCategory.Network,
-                        label = context.getString(R.string.doctor_check_litert_accel),
+                        label = "LiteRT accelerator",
                         detail = detail,
                         severity = severity,
                         fix = FixAction.OpenAppRoute(
-                            context.getString(R.string.doctor_fix_open_local_litert),
+                            "Open Local LiteRT",
                             AppRouteKey.SettingProvider,
                         ),
                     )
@@ -1147,18 +1153,20 @@ class DoctorChecks(
                 if (perfMap.isNotEmpty()) {
                     val rows = perfMap.values.sortedByDescending { it.sampledAtMs }
                     val detail = rows.joinToString("\n") { s ->
-                        val spec = if (s.specDecodingEngaged) context.getString(R.string.doctor_detail_mtp_on) else ""
-                        context.getString(R.string.doctor_detail_model_rates_row, s.modelId, "%.1f".format(s.prefillTps).toFloat(), "%.1f".format(s.decodeTps).toFloat(), spec)
+                        val spec = if (s.specDecodingEngaged) ", MTP on" else ""
+                        "${s.modelId}: prefill ${"%.1f".format(s.prefillTps)} tok/s, " +
+                            "decode ${"%.1f".format(s.decodeTps)} tok/s$spec"
                     }
                     add(
                         DoctorCheck(
                             id = "net.litert_perf",
                             category = DoctorCategory.Network,
-                            label = context.getString(R.string.doctor_check_litert_perf),
-                            detail = context.getString(R.string.doctor_detail_model_rates_full, detail),
+                            label = "LiteRT performance",
+                            detail = "Last-known per-model rates (character-based estimate, " +
+                                "~10% accurate for English text):\n$detail",
                             severity = Severity.INFO,
                             fix = FixAction.OpenAppRoute(
-                                context.getString(R.string.doctor_fix_open_local_litert),
+                                "Open Local LiteRT",
                                 AppRouteKey.SettingProvider,
                             ),
                         )
@@ -1177,11 +1185,18 @@ class DoctorChecks(
                         DoctorCheck(
                             id = "net.litert_vision",
                             category = DoctorCategory.Network,
-                            label = context.getString(R.string.doctor_check_litert_vision),
-                            detail = context.getString(R.string.doctor_detail_vision_unavailable_full, visionUnavailable.joinToString(", ")),
+                            label = "LiteRT vision encoder",
+                            detail = "Vision encoder unavailable on this device for: " +
+                                visionUnavailable.joinToString(", ") +
+                                ". These multimodal models run in text-only mode — chat works, " +
+                                "image inputs don't. Often fixed by a future LiteRT-LM SDK update " +
+                                "(the OpenGL fallback path's CreateSharedMemoryManager is " +
+                                "currently UNIMPLEMENTED upstream). Tap 'Re-try vision' next to " +
+                                "the model in Settings -> Local LiteRT after a GPU driver update " +
+                                "to clear the flag.",
                             severity = Severity.WARN,
                             fix = FixAction.OpenAppRoute(
-                                context.getString(R.string.doctor_fix_open_local_litert),
+                                "Open Local LiteRT",
                                 AppRouteKey.SettingProvider,
                             ),
                         )
@@ -1202,17 +1217,19 @@ class DoctorChecks(
                 val installed = prefs.installedModels(me.rerere.locallm.LocalRuntime.LlamaCpp)
                 val status = llamaCppModelStatus(installed)
                 val detail = when {
-                    status.total == 0 -> context.getString(R.string.doctor_detail_no_llama_models)
+                    status.total == 0 -> "No llama.cpp models installed."
                     status.missing.isEmpty() ->
                         "${status.total} model(s) installed, all present on disk."
                     else ->
-                        context.getString(R.string.doctor_detail_llamacpp_missing, status.missing.size, status.total, status.missing.joinToString(", "))
+                        "${status.missing.size} of ${status.total} installed llama.cpp model(s) " +
+                            "missing from disk: ${status.missing.joinToString(", ")}. The file may " +
+                            "have been moved, deleted, or its storage volume unmounted."
                 }
                 add(
                     DoctorCheck(
                         id = "net.llamacpp_models",
                         category = DoctorCategory.Network,
-                        label = context.getString(R.string.doctor_check_llamacpp_models),
+                        label = "llama.cpp models",
                         detail = detail,
                         severity = when {
                             status.total == 0 -> Severity.INFO
@@ -1220,7 +1237,7 @@ class DoctorChecks(
                             else -> Severity.WARN
                         },
                         fix = if (status.missing.isNotEmpty()) FixAction.OpenAppRoute(
-                            context.getString(R.string.doctor_fix_open_local_llama),
+                            "Open Local llama.cpp",
                             AppRouteKey.SettingProvider,
                         ) else null,
                     )
@@ -1235,9 +1252,9 @@ class DoctorChecks(
             DoctorCheck(
                 id = "net.dns",
                 category = DoctorCategory.Network,
-                label = context.getString(R.string.doctor_check_dns),
-                detail = if (dnsOk) context.getString(R.string.doctor_detail_dns_ok)
-                else context.getString(R.string.doctor_detail_dns_fail),
+                label = "DNS resolution",
+                detail = if (dnsOk) "dns.google resolved within 2.5 s."
+                else "DNS resolution failed or timed out. NetworkChangeMonitor evicts the OkHttp pool on network changes — if this stays red, check connectivity.",
                 severity = if (dnsOk) Severity.OK else Severity.WARN,
             )
         )
@@ -1256,9 +1273,9 @@ class DoctorChecks(
             DoctorCheck(
                 id = "termux.installed",
                 category = DoctorCategory.Termux,
-                label = context.getString(R.string.doctor_check_termux_installed),
-                detail = if (termuxInstalled) context.getString(R.string.doctor_detail_termux_installed_2)
-                else context.getString(R.string.doctor_detail_termux_not_installed_2, needers.joinToString(", ") { it.shortName(context) }),
+                label = "Termux installed",
+                detail = if (termuxInstalled) "com.termux is installed on this device."
+                else "Termux not installed. Required by: ${needers.joinToString(", ") { it.shortName() }}.",
                 severity = if (termuxInstalled) Severity.OK else Severity.WARN,
             )
         )
@@ -1271,9 +1288,9 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "termux.run_command",
                     category = DoctorCategory.Termux,
-                    label = context.getString(R.string.doctor_check_termux_perm),
-                    detail = if (runCommandPerm) context.getString(R.string.doctor_detail_termux_run_command_granted)
-                    else context.getString(R.string.doctor_detail_termux_run_command_not_granted),
+                    label = "Termux RUN_COMMAND permission",
+                    detail = if (runCommandPerm) "Granted — Moataz Alaqami can dispatch shell commands to Termux."
+                    else "Not granted. Re-toggle the Termux row in Local Tools to see the post-grant dialog.",
                     severity = if (runCommandPerm) Severity.OK else Severity.WARN,
                 )
             )
@@ -1299,18 +1316,18 @@ class DoctorChecks(
         runCatching {
             val needers = requirersOf(Capability.Shizuku, enabled)
             val status = ShizukuManager.status(context)
-            val fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_shizuku), AppRouteKey.SettingShizuku)
+            val fix = FixAction.OpenAppRoute("Open Shizuku settings", AppRouteKey.SettingShizuku)
 
             add(
                 DoctorCheck(
                     id = "shizuku.installed",
                     category = DoctorCategory.Shizuku,
-                    label = context.getString(R.string.doctor_check_shizuku_installed),
+                    label = "Shizuku installed",
                     detail = when {
                         status != ShizukuStatus.NOT_INSTALLED ->
-                            context.getString(R.string.doctor_detail_shizuku_present)
+                            "Shizuku (or an equivalent binder provider such as Sui) is present."
                         needers.isEmpty() -> "Not installed. Not required by any enabled tool."
-                        else -> context.getString(R.string.doctor_detail_shizuku_not_installed_needed, needers.joinToString(", ") { it.shortName(context) })
+                        else -> "Not installed. Needed by: ${needers.joinToString(", ") { it.shortName() }}."
                     },
                     severity = when {
                         status != ShizukuStatus.NOT_INSTALLED -> Severity.OK
@@ -1324,13 +1341,13 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "shizuku.running",
                     category = DoctorCategory.Shizuku,
-                    label = context.getString(R.string.doctor_check_shizuku_running),
+                    label = "Shizuku service running",
                     detail = when (status) {
-                        ShizukuStatus.NOT_INSTALLED -> context.getString(R.string.doctor_detail_shizuku_cant_check)
+                        ShizukuStatus.NOT_INSTALLED -> "Can't check: Shizuku isn't installed."
                         ShizukuStatus.NOT_RUNNING ->
                             if (needers.isEmpty()) "Binder not alive. Not required by any enabled tool."
-                            else context.getString(R.string.doctor_detail_shizuku_binder_not_alive, needers.joinToString(", ") { it.shortName(context) })
-                        else -> context.getString(R.string.doctor_detail_shizuku_binder_alive)
+                            else "Binder not alive, start the Shizuku service. Needed by: ${needers.joinToString(", ") { it.shortName() }}."
+                        else -> "Binder alive."
                     },
                     severity = when (status) {
                         ShizukuStatus.NOT_INSTALLED -> Severity.INFO
@@ -1344,14 +1361,14 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "shizuku.permission",
                     category = DoctorCategory.Shizuku,
-                    label = context.getString(R.string.doctor_check_shizuku_perm),
+                    label = "Shizuku permission",
                     detail = when (status) {
                         ShizukuStatus.NOT_INSTALLED, ShizukuStatus.NOT_RUNNING ->
-                            context.getString(R.string.doctor_detail_shizuku_not_applicable)
+                            "Not applicable yet, Shizuku isn't running."
                         ShizukuStatus.PERMISSION_DENIED ->
                             if (needers.isEmpty()) "Not granted. Not required by any enabled tool."
-                            else context.getString(R.string.doctor_detail_shizuku_not_granted_needed, needers.joinToString(", ") { it.shortName(context) })
-                        ShizukuStatus.READY -> context.getString(R.string.doctor_detail_shizuku_granted)
+                            else "Not granted. Needed by: ${needers.joinToString(", ") { it.shortName() }}."
+                        ShizukuStatus.READY -> "Granted."
                     },
                     severity = when (status) {
                         ShizukuStatus.NOT_INSTALLED, ShizukuStatus.NOT_RUNNING -> Severity.INFO
@@ -1366,8 +1383,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "shizuku.probe_failed",
                     category = DoctorCategory.Shizuku,
-                    label = context.getString(R.string.doctor_check_shizuku),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "Shizuku",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -1396,18 +1413,18 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.mcp_servers",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_mcp_servers),
+                    label = "MCP servers",
                     detail = when {
-                        summary.configured == 0 -> context.getString(R.string.doctor_detail_no_mcp_servers)
+                        summary.configured == 0 -> "No MCP servers configured."
                         summary.enabledNotConnected.isEmpty() ->
                             "${summary.configured} configured, ${summary.enabled} enabled, ${summary.connected} connected."
                         else ->
                             "${summary.configured} configured, ${summary.enabled} enabled, ${summary.connected} connected. " +
-                                context.getString(R.string.doctor_detail_mcp_not_connected, summary.enabledNotConnected.joinToString(", "))
+                                "Enabled but not connected: ${summary.enabledNotConnected.joinToString(", ")}."
                     },
                     severity = if (summary.enabledNotConnected.isEmpty()) Severity.INFO else Severity.WARN,
                     fix = if (summary.configured > 0)
-                        FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_mcp), AppRouteKey.SettingMcp)
+                        FixAction.OpenAppRoute("Open MCP servers", AppRouteKey.SettingMcp)
                     else null,
                 )
             )
@@ -1416,8 +1433,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "service.mcp_servers",
                     category = DoctorCategory.Services,
-                    label = context.getString(R.string.doctor_check_mcp_servers),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "MCP servers",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -1440,7 +1457,7 @@ class DoctorChecks(
         val skills = skillsResult.getOrNull()
         if (skills == null) {
             val err = skillsResult.exceptionOrNull()
-            val detail = context.getString(R.string.doctor_detail_probe_failed, err?.let { it::class.simpleName } ?: "?", err?.message ?: "?")
+            val detail = "Probe failed: ${err?.let { it::class.simpleName }}: ${err?.message ?: "?"}"
             add(DoctorCheck("skills.installed", DoctorCategory.Database, "Installed skills", detail, Severity.WARN))
             add(DoctorCheck("skills.seed", DoctorCategory.Database, "Bundled skill seed health", detail, Severity.WARN))
             return@buildList
@@ -1453,10 +1470,10 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "skills.installed",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_skills_installed),
-                    detail = context.getString(R.string.doctor_detail_skills_count, skills.size, bundledCount, userCount),
+                    label = "Installed skills",
+                    detail = "${skills.size} installed ($bundledCount bundled, $userCount user-added).",
                     severity = Severity.INFO,
-                    fix = FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_skills), AppRouteKey.Skills),
+                    fix = FixAction.OpenAppRoute("Open Skills", AppRouteKey.Skills),
                 )
             )
         }.onFailure {
@@ -1464,8 +1481,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "skills.installed",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_skills_installed),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "Installed skills",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -1493,14 +1510,15 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "skills.seed",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_skills_seed),
+                    label = "Bundled skill seed health",
                     detail = if (stale.isEmpty())
-                        context.getString(R.string.doctor_detail_skills_seed_ok)
+                        "Bundled-skill seed sentinels match the shipped assets."
                     else
-                        context.getString(R.string.doctor_detail_skills_seed_stale, stale.joinToString(", ")),
+                        "Seed sentinel out of date for: ${stale.joinToString(", ")}. This normally re-seeds " +
+                            "on the next app launch; if it persists, the write is failing silently.",
                     severity = if (stale.isEmpty()) Severity.OK else Severity.WARN,
                     fix = if (stale.isNotEmpty())
-                        FixAction.OpenAppRoute(context.getString(R.string.doctor_fix_open_skills), AppRouteKey.Skills)
+                        FixAction.OpenAppRoute("Open Skills", AppRouteKey.Skills)
                     else null,
                 )
             )
@@ -1509,8 +1527,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "skills.seed",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_skills_seed),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "Bundled skill seed health",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -1537,11 +1555,12 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "storage.gallery_orphans",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_gallery_orphans),
+                    label = "Gallery orphaned images",
                     detail = if (status.orphanCount == 0)
-                        context.getString(R.string.doctor_detail_images_all_ok, status.total)
+                        "${status.total} generated image record(s), all backed by a file on disk."
                     else
-                        context.getString(R.string.doctor_detail_images_orphan, status.orphanCount, status.total),
+                        "${status.orphanCount} of ${status.total} generated image record(s) point at a " +
+                            "file that no longer exists on disk.",
                     severity = if (status.orphanCount > 0) Severity.WARN else Severity.OK,
                 )
             )
@@ -1550,8 +1569,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "storage.gallery_orphans",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_gallery_orphans),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "Gallery orphaned images",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -1565,7 +1584,7 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "storage.workspace",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_workspace),
+                    label = "Agent workspace",
                     detail = when {
                         !exists -> "${root.absolutePath} does not exist."
                         !writable -> "${root.absolutePath} exists but is not writable."
@@ -1582,8 +1601,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "storage.workspace",
                     category = DoctorCategory.Database,
-                    label = context.getString(R.string.doctor_check_workspace),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "Agent workspace",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -1610,14 +1629,15 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "diag.compaction",
                     category = DoctorCategory.Diagnostics,
-                    label = context.getString(R.string.doctor_check_compaction),
+                    label = "Context compaction",
                     detail = when {
                         !settings.enableAutoCompaction ->
-                            context.getString(R.string.doctor_detail_compaction_disabled, count)
+                            "Disabled. $count conversation(s) have ever been compacted."
                         count == 0 ->
-                            context.getString(R.string.doctor_detail_compaction_enabled_zero, thresholdDesc)
+                            "Enabled, threshold $thresholdDesc. 0 conversations compacted so far, " +
+                                "expected until a conversation crosses the threshold."
                         else ->
-                            context.getString(R.string.doctor_detail_compaction_enabled_count, thresholdDesc, count)
+                            "Enabled, threshold $thresholdDesc. $count conversation(s) compacted so far."
                     },
                     severity = Severity.INFO,
                 )
@@ -1627,8 +1647,8 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "diag.compaction",
                     category = DoctorCategory.Diagnostics,
-                    label = context.getString(R.string.doctor_check_compaction),
-                    detail = context.getString(R.string.doctor_detail_probe_failed, it::class.simpleName ?: "?", it.message ?: "?"),
+                    label = "Context compaction",
+                    detail = "Probe failed: ${it::class.simpleName}: ${it.message ?: "?"}",
                     severity = Severity.WARN,
                 )
             )
@@ -1664,14 +1684,14 @@ class DoctorChecks(
             DoctorCheck(
                 id = "browser.profile_dir_writable",
                 category = DoctorCategory.Permissions,
-                label = context.getString(R.string.doctor_check_browser_profile),
+                label = "Browser profile directory",
                 detail = when {
                     ok && browserNeeded -> "${profileDir.absolutePath} exists and is writable — cookies persist."
                     ok -> "${profileDir.absolutePath} exists. Not required by any enabled tool."
-                    !exists && browserNeeded -> context.getString(R.string.doctor_detail_browser_not_exist)
+                    !exists && browserNeeded -> "Directory does not exist. Cookies and localStorage won't persist. Needed by: Browser."
                     !exists -> "Directory does not exist. Not required by any enabled tool."
-                    !writable && browserNeeded -> context.getString(R.string.doctor_detail_browser_not_writable)
-                    else -> context.getString(R.string.doctor_detail_browser_not_writable_generic)
+                    !writable && browserNeeded -> "Directory exists but is not writable. Needed by: Browser."
+                    else -> "Directory exists but is not writable."
                 },
                 severity = when {
                     ok -> Severity.OK
@@ -1679,15 +1699,15 @@ class DoctorChecks(
                     else -> Severity.INFO
                 },
                 fix = if (!ok && browserNeeded) FixAction.AutoFix(
-                    label = context.getString(R.string.doctor_fix_create_dir),
+                    label = "Create directory",
                     run = {
                         val created = runCatching { profileDir.mkdirs() }.getOrDefault(false)
                         val nowOk = profileDir.exists() && profileDir.canWrite()
                         AutoFixResult(
                             ok = nowOk,
-                            message = if (nowOk) context.getString(R.string.doctor_fix_browser_created_2, profileDir.absolutePath)
-                            else if (created) context.getString(R.string.doctor_fix_browser_not_writable_2)
-                            else context.getString(R.string.doctor_fix_browser_mkdirs_failed),
+                            message = if (nowOk) "Created ${profileDir.absolutePath}."
+                            else if (created) "Directory created but still not writable — check storage permission."
+                            else "mkdirs() returned false; underlying storage may be read-only.",
                         )
                     },
                 ) else null,
@@ -1709,7 +1729,7 @@ class DoctorChecks(
                 DoctorCheck(
                     id = "browser.write_tools_status",
                     category = DoctorCategory.Permissions,
-                    label = context.getString(R.string.doctor_check_browser_write_tools),
+                    label = "Browser write tools enabled",
                     detail = detail,
                     severity = Severity.INFO,
                 )
@@ -1726,15 +1746,15 @@ class DoctorChecks(
             DoctorCheck(
                 id = "maint.cache_size",
                 category = DoctorCategory.Maintenance,
-                label = context.getString(R.string.doctor_check_cache_size),
-                detail = context.getString(R.string.doctor_detail_cache_using, humanBytes(cacheBytes)) +
-                    if (cacheBytes > 200L * 1024 * 1024) context.getString(R.string.doctor_detail_cache_clear_hint) else context.getString(R.string.doctor_detail_cache_normal),
+                label = "App cache size",
+                detail = "Cache is using ${humanBytes(cacheBytes)}. " +
+                    if (cacheBytes > 200L * 1024 * 1024) "Consider clearing — over 200 MB." else "Within normal range.",
                 severity = if (cacheBytes > 500L * 1024 * 1024) Severity.WARN else Severity.OK,
                 fix = FixAction.AutoFix(
-                    label = context.getString(R.string.doctor_fix_clear_cache),
+                    label = "Clear cache",
                     run = {
                         val freed = clearDirectoryContents(context.cacheDir)
-                        AutoFixResult(ok = true, message = context.getString(R.string.doctor_fix_cache_freed, humanBytes(freed)))
+                        AutoFixResult(ok = true, message = "Freed ${humanBytes(freed)}.")
                     },
                 ),
             )
@@ -1747,34 +1767,34 @@ class DoctorChecks(
         DoctorCheck(
             id = "diag.app",
             category = DoctorCategory.Diagnostics,
-            label = context.getString(R.string.doctor_check_app_build),
-            detail = context.getString(R.string.doctor_detail_app_build, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, BuildConfig.DEBUG),
+            label = "App build",
+            detail = "Moataz Alaqami ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) — debug=${BuildConfig.DEBUG}",
             severity = Severity.INFO,
         ),
         DoctorCheck(
             id = "diag.android",
             category = DoctorCategory.Diagnostics,
-            label = context.getString(R.string.doctor_check_android),
-            detail = context.getString(R.string.doctor_detail_android, Build.VERSION.SDK_INT, Build.VERSION.RELEASE, Build.MANUFACTURER, Build.MODEL),
+            label = "Android",
+            detail = "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE}) on ${Build.MANUFACTURER} ${Build.MODEL}",
             severity = Severity.INFO,
         ),
         DoctorCheck(
             id = "diag.runtime",
             category = DoctorCategory.Diagnostics,
-            label = context.getString(R.string.doctor_check_runtime),
+            label = "Runtime",
             detail = run {
                 val rt = Runtime.getRuntime()
                 val freeMb = rt.freeMemory() / (1024 * 1024)
                 val totalMb = rt.totalMemory() / (1024 * 1024)
                 val maxMb = rt.maxMemory() / (1024 * 1024)
-                context.getString(R.string.doctor_detail_heap, freeMb, totalMb, maxMb)
+                "Heap: $freeMb MB free of $totalMb MB ($maxMb MB max)"
             },
             severity = Severity.INFO,
         ),
         DoctorCheck(
             id = "diag.enabled_tools",
             category = DoctorCategory.Diagnostics,
-            label = context.getString(R.string.doctor_check_enabled_tools),
+            label = "Enabled tools across assistants",
             detail = if (enabled.isEmpty()) "No local tools enabled — agentic features won't work."
             else "${enabled.size} tool group(s) enabled.",
             severity = if (enabled.isEmpty()) Severity.WARN else Severity.INFO,

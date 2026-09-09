@@ -3,8 +3,8 @@ package me.rerere.workspace
 import java.io.File
 import java.nio.file.Files
 
-class RootfsPatcher {
-    fun patch(
+open class RootfsPatcher {
+    open fun patch(
         linuxDir: File,
         options: RootfsPatchOptions = RootfsPatchOptions(),
     ) {

@@ -10,7 +10,6 @@ import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.provider.TTSProvider
-import me.rerere.tts.provider.TTSProviderException
 import me.rerere.tts.provider.TTSProviderSetting
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -77,9 +76,8 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
         if (!response.isSuccessful) {
             // 把错误响应体读出来方便排查 (4xx 通常返回 JSON 错误信息)
             val errorBody = runCatching { response.body?.string() }.getOrNull().orEmpty()
-            throw TTSProviderException(
-                message = "Step TTS request failed: HTTP ${response.code} ${response.message}. body=$errorBody",
-                statusCode = response.code
+            throw Exception(
+                "Step TTS request failed: HTTP ${response.code} ${response.message}. body=$errorBody"
             )
         }
 

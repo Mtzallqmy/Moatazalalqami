@@ -14,4 +14,10 @@ class ToolApprovalDefaultsTest {
         assertTrue(ToolApprovalDefaults.requiresApproval("launch_activity"))
         assertTrue(ToolApprovalDefaults.allowsAlwaysAllow("launch_activity"))
     }
+
+    @Test fun `critical GitHub operations cannot be always allowed`() {
+        assertTrue(ToolApprovalDefaults.requiresApproval("github_merge_pull_request"))
+        assertTrue(!ToolApprovalDefaults.allowsAlwaysAllow("github_merge_pull_request"))
+        assertTrue(ToolApprovalDefaults.requiresApproval("github_delete_file"))
+    }
 }

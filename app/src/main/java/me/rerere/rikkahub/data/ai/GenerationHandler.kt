@@ -29,8 +29,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
+import me.rerere.ai.provider.CustomBody
+import me.rerere.ai.provider.ImageEditParams
+import me.rerere.ai.provider.ImageGenerationParams
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
@@ -51,18 +56,21 @@ import me.rerere.rikkahub.data.ai.transformers.InputMessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.MessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.OutputMessageTransformer
 import me.rerere.rikkahub.data.files.FileFolders
+import java.io.File
+import java.io.IOException
 import me.rerere.rikkahub.data.ai.transformers.onGenerationFinish
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.ai.limits.ToolRuntimeLimits
 import me.rerere.rikkahub.data.ai.tools.buildMemoryTools
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.data.repository.MemoryRepository
-import java.io.File
-import java.io.IOException
+import me.rerere.rikkahub.utils.applyPlaceholders
+import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -472,13 +480,109 @@ class GenerationHandler(
         // preamble is replayed in user history every turn, burning ~80 tokens × N turns.
         systemAddendum: String? = null,
         conversationSystemPrompt: String? = null,
-        conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
+
+        // Dedicated image endpoints are real generation models, not text-chat endpoints. Route
+        // them through the provider's image API while keeping multimodal CHAT models on the
+        // normal streaming path (those models can still return text + image/tool parts together).
+        if (model.type == ModelType.IMAGE) {
+            val latestUserMessage = messages.lastOrNull { it.role == MessageRole.USER }
+                ?: error("Image generation requires a user message")
+            val prompt = latestUserMessage.toText().trim()
+            require(prompt.isNotBlank()) { "Image generation requires a text prompt" }
+
+            onBeforeModelRequest()
+            processingStatus.value = "Generating image…"
+
+            val imageMessageId = Uuid.random()
+            val imageParts = linkedMapOf<Int, UIMessagePart.Image>()
+            val partialSlots = sortedSetOf<Int>()
+            var nextSlot = 0
+
+            val inputImages = latestUserMessage.parts
+                .filterIsInstance<UIMessagePart.Image>()
+                .map(UIMessagePart.Image::url)
+                .filter(String::isNotBlank)
+
+            val imageFlow = if (inputImages.isEmpty()) {
+                providerImpl.generateImage(
+                    providerSetting = provider,
+                    params = ImageGenerationParams(
+                        model = model,
+                        prompt = prompt,
+                        customHeaders = model.customHeaders,
+                        customBody = model.customBodies,
+                    ),
+                )
+            } else {
+                providerImpl.editImage(
+                    providerSetting = provider,
+                    params = ImageEditParams(
+                        model = model,
+                        prompt = prompt,
+                        images = inputImages,
+                        customHeaders = model.customHeaders,
+                        customBody = model.customBodies,
+                    ),
+                )
+            }
+
+            imageFlow.collect { item ->
+                val partialImageIndex = item.partialImageIndex
+                val slot: Int = when {
+                    partialImageIndex != null -> partialImageIndex
+                    !item.partial && partialSlots.isNotEmpty() -> partialSlots.first()
+                    else -> nextSlot++
+                }
+                nextSlot = maxOf(nextSlot, slot + 1)
+                if (item.partial) partialSlots += slot else partialSlots -= slot
+
+                val raw = item.data.trim()
+                val imageUrl = when {
+                    raw.startsWith("data:") ||
+                        raw.startsWith("http://") ||
+                        raw.startsWith("https://") ||
+                        raw.startsWith("file://") ||
+                        raw.startsWith("content://") -> raw
+                    else -> "data:${item.mimeType};base64,$raw"
+                }
+                imageParts[slot] = UIMessagePart.Image(url = imageUrl)
+
+                emit(
+                    GenerationChunk.Messages(
+                        messages + UIMessage(
+                            id = imageMessageId,
+                            role = MessageRole.ASSISTANT,
+                            parts = imageParts.toSortedMap().values.toList(),
+                            modelId = model.id,
+                        )
+                    )
+                )
+            }
+
+            if (imageParts.isEmpty()) {
+                error("Provider returned no image data")
+            }
+
+            processingStatus.value = null
+            emit(
+                GenerationChunk.Messages(
+                    messages + UIMessage(
+                        id = imageMessageId,
+                        role = MessageRole.ASSISTANT,
+                        parts = imageParts.toSortedMap().values.toList(),
+                        finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+                        modelId = model.id,
+                    )
+                )
+            )
+            return@flow
+        }
 
         // Replay safety: scan the input messages for tools that were Approved + began
         // execution but never produced output (process killed mid-execute). Without this
@@ -610,7 +714,6 @@ class GenerationHandler(
                         stream = assistant.streamOutput,
                         processingStatus = processingStatus,
                         conversationSystemPrompt = conversationSystemPrompt,
-                        conversationId = conversationId,
                         conversationModeInjectionIds = conversationModeInjectionIds,
                         conversationLorebookIds = conversationLorebookIds,
                         workspaceCwd = workspaceCwd,
@@ -924,37 +1027,9 @@ class GenerationHandler(
                             )
                             return@forEach
                         }
-                        // Resolve the tool def BEFORE the runCatching block, same reason as
-                        // parsedArgs above: this is not a random tool-body throw, so it gets
-                        // its own structured envelope naming exactly what was called and what
-                        // was actually available — rather than the generic 500-char-capped
-                        // exception message the runCatching/.onFailure below produces (#88:
-                        // this is the self-diagnosing surface for a server that connects and
-                        // lists tools but contributes zero entries to the dispatch list, e.g.
-                        // a newly mcp_add-ed server never enabled for this assistant).
-                        val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
-                        if (toolDef == null) {
-                            Log.w(TAG, "tool ${tool.toolName} not found among ${toolsInternal.size} tools available this turn")
-                            executedTools += tool.copy(
-                                output = listOf(
-                                    UIMessagePart.Text(
-                                        json.encodeToString(buildJsonObject {
-                                            put("error", JsonPrimitive("tool_not_found"))
-                                            put(
-                                                "detail",
-                                                JsonPrimitive("Tool '${tool.toolName}' was called but is not among the tools available this turn."),
-                                            )
-                                            put(
-                                                "tools_available_this_turn",
-                                                JsonPrimitive(toolsInternal.joinToString(", ") { it.name }.take(1500)),
-                                            )
-                                        })
-                                    )
-                                )
-                            )
-                            return@forEach
-                        }
                         runCatching {
+                            val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
+                                ?: error("Tool ${tool.toolName} not found")
                             val args = parsedArgs.getOrThrow()
                             if (BuildConfig.DEBUG) {
                                 Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: ${redactSecrets(args)}")
@@ -1158,7 +1233,6 @@ class GenerationHandler(
         stream: Boolean,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
-        conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
@@ -1194,11 +1268,10 @@ class GenerationHandler(
                 if (volatileSystem.isNotBlank()) add(UIMessagePart.Text(volatileSystem))
             }
             if (systemParts.isNotEmpty()) {
-                add(UIMessage(role = MessageRole.SYSTEM, parts = systemParts, isSynthetic = true))
+                add(UIMessage(role = MessageRole.SYSTEM, parts = systemParts))
             }
             // Keeps the fork's multi-part system assembly and tool-image ageing, on top of
-            // upstream's isSynthetic marker (keeps this built-up system prompt out of
-            // TemplateTransformer) and its stepped truncation (which now preserves
+            // upstream's renamed field and its stepped truncation (which now preserves
             // prompt caching instead of trimming one message at a time).
             addAll(messages.limitContext(assistant.contextMessageLimit).ageOldToolImages())
         }.transforms(
@@ -1219,7 +1292,7 @@ class GenerationHandler(
             temperature = assistant.temperature,
             topP = assistant.topP,
             maxTokens = assistant.maxTokens,
-            maxStreamRetries = if (settings.networkSetting.enableAutoRetry) settings.responseStreamMaxRetries else 0,
+            maxStreamRetries = settings.responseStreamMaxRetries,
             tools = tools,
             reasoningLevel = assistant.reasoningLevel,
             customHeaders = buildList {
@@ -1229,111 +1302,106 @@ class GenerationHandler(
             customBody = buildList {
                 addAll(assistant.customBodies)
                 addAll(model.customBodies)
-            },
-            sessionId = conversationId?.toString(),
+            }
         )
-        try {
-            if (stream) {
-                aiLoggingManager.addLog(
-                    AILogging.Generation(
-                        params = params,
-                        messages = messages,
-                        providerSetting = provider,
-                        stream = true
-                    )
-                )
-                var receivedMeaningfulOutput = false
-                var receivedAnyChunk = false
-                val streamChunkHandler = StreamChunkHandler(model)
-                providerImpl.streamText(
+        if (stream) {
+            aiLoggingManager.addLog(
+                AILogging.Generation(
+                    params = params,
+                    messages = messages,
                     providerSetting = provider,
-                    messages = internalMessages,
-                    params = params
-                ).onCompletion { cause ->
-                    // Some SSE implementations report an abruptly closed socket through onClosed
-                    // without an exception. Treat a clean close with no chunks at all as a transport
-                    // failure so the retry policy can recover a background continuation. A clean
-                    // close after chunks arrived but none produced parseable parts is a permanent
-                    // condition (unrecognized part shapes), not a transport hiccup, so it must not
-                    // burn retries - log it and let the generation end normally with an empty reply.
-                    if (cause == null && shouldReportEmptyGenerationStream(receivedAnyChunk)) {
-                        throw IOException("Model stream closed without meaningful output")
-                    }
-                    if (cause == null && receivedAnyChunk && !receivedMeaningfulOutput) {
-                        Log.w(
-                            TAG,
-                            "streamText: stream closed after chunks arrived but none contained " +
-                                "parseable parts; ending without retry",
-                        )
-                    }
-                }.retryWhen { cause, retryAttempt ->
-                    val shouldRetry = shouldRetryGenerationStreamFailure(
-                        failure = cause,
-                        retryAttempt = retryAttempt,
-                        maxRetries = params.maxStreamRetries,
-                        receivedMeaningfulOutput = receivedMeaningfulOutput,
-                    )
-                    if (shouldRetry) {
-                        // A new attempt is about to start collecting from scratch: reset the
-                        // per-attempt "did anything arrive" flag so onCompletion's transport-failure
-                        // check reflects this attempt, not a chunk seen in an earlier one.
-                        receivedAnyChunk = false
-                        val delayMs = generationStreamRetryDelayMs(retryAttempt)
-                        processingStatus.value = retryStatusText(
-                            context = context,
-                            retryNumber = retryAttempt + 1,
-                            maxRetries = params.maxStreamRetries,
-                            failure = cause,
-                        )
-                        Log.w(
-                            TAG,
-                            "streamText: retrying after failure " +
-                                "(${retryAttempt + 1}/${params.maxStreamRetries}) in ${delayMs}ms",
-                            cause,
-                        )
-                        delay(delayMs)
-                    }
-                    shouldRetry
-                }.collect {
-                    receivedAnyChunk = true
-                    if (isMeaningfulStreamChunk(it)) {
-                        receivedMeaningfulOutput = true
-                        clearRetryStatus(processingStatus)
-                    }
-                    messages = streamChunkHandler.handle(messages, it)
-                    onUpdateMessages(messages)
-                }
-            } else {
-                aiLoggingManager.addLog(
-                    AILogging.Generation(
-                        params = params,
-                        messages = messages,
-                        providerSetting = provider,
-                        stream = false
-                    )
+                    stream = true
                 )
-                val result = retryGenerationTransportRequest(
-                    maxRetries = params.maxStreamRetries,
-                    onRetry = { retryNumber, failure ->
-                        processingStatus.value = retryStatusText(
-                            context = context,
-                            retryNumber = retryNumber,
-                            maxRetries = params.maxStreamRetries,
-                            failure = failure,
-                        )
-                    },
-                ) {
-                    providerImpl.generateText(
-                        providerSetting = provider,
-                        messages = internalMessages,
-                        params = params,
+            )
+            var receivedMeaningfulOutput = false
+            var receivedAnyChunk = false
+            val streamChunkHandler = StreamChunkHandler(model)
+            providerImpl.streamText(
+                providerSetting = provider,
+                messages = internalMessages,
+                params = params
+            ).onCompletion { cause ->
+                // Some SSE implementations report an abruptly closed socket through onClosed
+                // without an exception. Treat a clean close with no chunks at all as a transport
+                // failure so the retry policy can recover a background continuation. A clean
+                // close after chunks arrived but none produced parseable parts is a permanent
+                // condition (unrecognized part shapes), not a transport hiccup, so it must not
+                // burn retries - log it and let the generation end normally with an empty reply.
+                if (cause == null && shouldReportEmptyGenerationStream(receivedAnyChunk)) {
+                    throw IOException("Model stream closed without meaningful output")
+                }
+                if (cause == null && receivedAnyChunk && !receivedMeaningfulOutput) {
+                    Log.w(
+                        TAG,
+                        "streamText: stream closed after chunks arrived but none contained " +
+                            "parseable parts; ending without retry",
                     )
                 }
-                messages = messages.handleTextGenerationResult(result = result, model = model)
+            }.retryWhen { cause, retryAttempt ->
+                val shouldRetry = shouldRetryGenerationStreamFailure(
+                    failure = cause,
+                    retryAttempt = retryAttempt,
+                    maxRetries = params.maxStreamRetries,
+                    receivedMeaningfulOutput = receivedMeaningfulOutput,
+                )
+                if (shouldRetry) {
+                    // A new attempt is about to start collecting from scratch: reset the
+                    // per-attempt "did anything arrive" flag so onCompletion's transport-failure
+                    // check reflects this attempt, not a chunk seen in an earlier one.
+                    receivedAnyChunk = false
+                    val delayMs = generationStreamRetryDelayMs(retryAttempt)
+                    processingStatus.value = retryStatusText(
+                        context = context,
+                        retryNumber = retryAttempt + 1,
+                        maxRetries = params.maxStreamRetries,
+                        failure = cause,
+                    )
+                    Log.w(
+                        TAG,
+                        "streamText: retrying after failure " +
+                            "(${retryAttempt + 1}/${params.maxStreamRetries}) in ${delayMs}ms",
+                        cause,
+                    )
+                    delay(delayMs)
+                }
+                shouldRetry
+            }.collect {
+                receivedAnyChunk = true
+                if (isMeaningfulStreamChunk(it)) {
+                    receivedMeaningfulOutput = true
+                    clearRetryStatus(processingStatus)
+                }
+                messages = streamChunkHandler.handle(messages, it)
                 onUpdateMessages(messages)
             }
-        } finally {
-            processingStatus.value = null
+        } else {
+            aiLoggingManager.addLog(
+                AILogging.Generation(
+                    params = params,
+                    messages = messages,
+                    providerSetting = provider,
+                    stream = false
+                )
+            )
+            val result = retryGenerationTransportRequest(
+                maxRetries = params.maxStreamRetries,
+                onRetry = { retryNumber, failure ->
+                    processingStatus.value = retryStatusText(
+                        context = context,
+                        retryNumber = retryNumber,
+                        maxRetries = params.maxStreamRetries,
+                        failure = failure,
+                    )
+                },
+            ) {
+                providerImpl.generateText(
+                    providerSetting = provider,
+                    messages = internalMessages,
+                    params = params,
+                )
+            }
+            messages = messages.handleTextGenerationResult(result = result, model = model)
+            onUpdateMessages(messages)
         }
     }
 
@@ -1371,4 +1439,77 @@ class GenerationHandler(
         ) + nonTextParts
     }
 
+    fun translateText(
+        settings: Settings,
+        sourceText: String,
+        targetLanguage: Locale,
+        onStreamUpdate: ((String) -> Unit)? = null
+    ): Flow<String> = flow {
+        val model = settings.providers.findModelById(settings.translateModeId)
+            ?: error("Translation model not found")
+        val provider = model.findProvider(settings.providers)
+            ?: error("Translation provider not found")
+
+        val providerHandler = providerManager.getProviderByType(provider)
+
+        if (!ModelRegistry.QWEN_MT.match(model.modelId)) {
+            // Use regular translation with prompt
+            val prompt = settings.translatePrompt.applyPlaceholders(
+                "source_text" to sourceText,
+                "target_lang" to targetLanguage.toString(),
+            )
+
+            var messages = listOf(UIMessage.user(prompt))
+            var translatedText = ""
+            val streamChunkHandler = StreamChunkHandler(model)
+
+            providerHandler.streamText(
+                providerSetting = provider,
+                messages = messages,
+                params = TextGenerationParams(
+                    model = model,
+                    reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
+                    maxStreamRetries = settings.responseStreamMaxRetries,
+                ),
+            ).collect { chunk ->
+                messages = streamChunkHandler.handle(messages, chunk)
+                translatedText = messages.lastOrNull()?.toText() ?: ""
+
+                if (translatedText.isNotBlank()) {
+                    onStreamUpdate?.invoke(translatedText)
+                    emit(translatedText)
+                }
+            }
+        } else {
+            // Use Qwen MT model with special translation options
+            val messages = listOf(UIMessage.user(sourceText))
+            val result = providerHandler.generateText(
+                providerSetting = provider,
+                messages = messages,
+                params = TextGenerationParams(
+                    model = model,
+                    temperature = 0.3f,
+                    topP = 0.95f,
+                    customBody = listOf(
+                        CustomBody(
+                            key = "translation_options",
+                            value = buildJsonObject {
+                                put("source_lang", JsonPrimitive("auto"))
+                                put(
+                                    "target_lang",
+                                    JsonPrimitive(targetLanguage.getDisplayLanguage(Locale.ENGLISH))
+                                )
+                            }
+                        )
+                    )
+                ),
+            )
+            val translatedText = result.message.toText()
+
+            if (translatedText.isNotBlank()) {
+                onStreamUpdate?.invoke(translatedText)
+                emit(translatedText)
+            }
+        }
+    }.flowOn(Dispatchers.IO)
 }
